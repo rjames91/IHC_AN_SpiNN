@@ -1,0 +1,18 @@
+app_load ../model_binaries/IHC_AN_LSR_float.aplx . 1 20
+app_load ../model_binaries/IHC_AN_MSR_float.aplx . 2 20
+app_load ../model_binaries/IHC_AN_HSR_float.aplx . 3 20
+app_load ../model_binaries/IHC_AN_HSR_float.aplx . 4 20
+app_load ../model_binaries/IHC_AN_HSR_float.aplx . 5 20
+
+app_load ../model_binaries/IHC_AN_LSR_float.aplx . 6 20
+app_load ../model_binaries/IHC_AN_MSR_float.aplx . 7 20
+app_load ../model_binaries/IHC_AN_HSR_float.aplx . 8 20
+app_load ../model_binaries/IHC_AN_HSR_float.aplx . 9 20
+app_load ../model_binaries/IHC_AN_HSR_float.aplx . 10 20
+
+app_load ../model_binaries/IHC_AN_LSR_float.aplx . 11 20
+app_load ../model_binaries/IHC_AN_MSR_float.aplx . 12 20
+app_load ../model_binaries/IHC_AN_HSR_float.aplx . 13 20
+app_load ../model_binaries/IHC_AN_HSR_float.aplx . 14 20
+app_load ../model_binaries/IHC_AN_HSR_float.aplx . 15 20
+

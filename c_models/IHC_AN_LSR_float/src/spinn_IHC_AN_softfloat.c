@@ -35,10 +35,11 @@ uint write_switch;
 uint processing;
 uint index_x;
 uint index_y;
-REAL r_max;
+REAL r_max_recip;
 REAL dt_spikes;
 uint resamp_fac;
-//REAL ln2_recip;
+SEED_TYPE local_seed;
+uint seed_selection[SEED_SEL_SIZE];
 
 int start_count_process;
 int end_count_process;
@@ -103,7 +104,7 @@ startupVars generateStartupVars(void)
 	mICaCurr=1./(1.+exp(-gamma*IHCV)*(1./beta));
 
 	//=======Calculate CaCurrent========//
-	gmaxcalsr=1e-11;
+	gmaxcalsr=2.5e-11;
 	eca=0.066;
 	tauca=1e-4;
 	CaCurrLSR=((gmaxcalsr*pow(mICaCurr,3))*(IHCV-eca))*tauca;
@@ -111,11 +112,11 @@ startupVars generateStartupVars(void)
 	//========Calculate AN==========//
 	z=1e38;//reduced from 1e40 fit as single float type
 	power=3;
-	y=10;
-	x=66.3;
-	MLSR=13;
-	l=2580;
-	r=6580;
+	y=20;
+	x=30;
+	MLSR=15;
+	l=900;
+	r=100;
 
 	kt0LSR=-z*pow(CaCurrLSR,power)*100;//added *100
 	ANCleftLSR=(kt0LSR*y*MLSR)/(y*(l+r)+kt0LSR*l);
@@ -233,13 +234,26 @@ void app_init(void)
 	
 	//calculate startup values
 	startupValues=generateStartupVars();
+	
 	//initialise random number gen
-	//init_WELL1024a_simp();
-	for(uint i=0;i<33;i++)
+	//io_printf (IO_BUF, "[core %d] seed_selection=",coreID);
+	for(uint i=0;i<SEED_SEL_SIZE;i++)
 	{
-		seed[i]=coreID | (chipID<<i);
+		seed_selection[i]=mars_kiss32();
+		//io_printf (IO_BUF, "%u ",seed_selection[i]);
+
 	}
-	validate_WELL1024a_seed (seed);
+	//io_printf (IO_BUF,"\n");
+
+	io_printf (IO_BUF, "[core %d][chip %d] local_seeds=",coreID,chipID);
+	for(uint i=0;i<4;i++)
+	{
+		local_seed[i]=seed_selection[(coreID<<i)|chipID];
+		io_printf (IO_BUF, "%u ",local_seed[i]);
+	}
+	io_printf (IO_BUF,"\n");
+
+	validate_mars_kiss64_seed (local_seed);
 	
 	//initialise cilia
 	Cilia.tc= REAL_CONST(0.00012);
@@ -277,23 +291,23 @@ void app_init(void)
 	preSyn.power=REAL_CONST(3.);
 	preSyn.z=1e38;//reduced from 1e40 to fit within float range (then an additional *100 is added in code)
 
-	preSyn.GmaxCa[0]=1e-11;
-	preSyn.GmaxCa[1]=1e-11;
+	preSyn.GmaxCa[0]=2.5e-11;
+	preSyn.GmaxCa[1]=2.5e-11;
 	
 	//TODO: explain these numbers
-	preSyn.CaTh[0]=1e-4;//1e-42;
-	preSyn.CaTh[1]=1e-4;//1e-42;
+	preSyn.CaTh[0]=1e-7;//1e-42;
+	preSyn.CaTh[1]=1e-7;//1e-42;
 
 	//=======initialise the synapse params=======//
 
-	Synapse.ldt=REAL_CONST(2580.)*dt_spikes;
-	Synapse.ydt=REAL_CONST(10.)*dt_spikes;
-	Synapse.xdt=REAL_CONST(66.3)*dt_spikes;
-	Synapse.rdt=REAL_CONST(6580.)*dt_spikes;
+	Synapse.ldt=REAL_CONST(900.)*dt_spikes;
+	Synapse.ydt=REAL_CONST(20.)*dt_spikes;
+	Synapse.xdt=REAL_CONST(30.)*dt_spikes;
+	Synapse.rdt=REAL_CONST(100.)*dt_spikes;
 	Synapse.refrac_period=((7.5e-4)/dt_spikes);
 
-	Synapse.M[0]=REAL_CONST(13.);
-	Synapse.M[1]=REAL_CONST(13.);
+	Synapse.M[0]=REAL_CONST(15.);
+	Synapse.M[1]=REAL_CONST(15.);
 	  
 #ifdef PROFILE
     // configure timer 2 for profiling
@@ -402,6 +416,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 	REAL ICa;
 	REAL CaCurr_pow;
 	REAL releaseProb_pow;
+	REAL Repro_rate;
 	REAL Synapse_ypow;
 	REAL Synapse_xpow;
 	REAL compare;
@@ -550,12 +565,18 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 				}
 	
 				//=========Reprocessed=========//
+				Repro_rate=ANReproLSR[j]*Synapse.xdt;
+				if(Repro_rate>REAL_CONST(1.))
+				{
+					Repro_rate=REAL_CONST(1.);
+				}
 	
 				Synapse_xpow=REAL_CONST(1.);
 				Synapse_ypow=REAL_CONST(1.);
 				for(k=0;k<(uint)M_q;k++)
 				{			
-					Synapse_xpow=Synapse_xpow*(REAL_CONST(1.)-(ANReproLSR[j]*Synapse.xdt));
+					//Synapse_xpow=Synapse_xpow*(REAL_CONST(1.)-(ANReproLSR[j]*Synapse.xdt));
+					Synapse_xpow=Synapse_xpow*(REAL_CONST(1.)-Repro_rate);
 					Synapse_ypow=Synapse_ypow*(REAL_CONST(1.)-Synapse.ydt);
 				}
 	
@@ -570,8 +591,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 					reprocessed=REAL_CONST(0.);
 				}
 	
-				//========Replenish==========//
-	
+				//========Replenish==========//	
 				Probability=REAL_CONST(1.)-Synapse_ypow;			
 				//Probability=1-pow(1-Synapse.y*dt,M_q);
 				if(Probability>((REAL)random_gen()*r_max_recip))
@@ -588,15 +608,20 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 				reuptakeandlost=(Synapse.rdt+Synapse.ldt)*ANCleftLSR[j];
 				reuptake=Synapse.rdt*ANCleftLSR[j];
 				
-				if((ANCleftLSR[j]<(REAL_MAX - ejected + reuptakeandlost)) && (ANCleftLSR[j]>(-REAL_MAX - ejected + reuptakeandlost)))
+				//if((ANCleftLSR[j]<(REAL_MAX - ejected + reuptakeandlost)) && (ANCleftLSR[j]>(-REAL_MAX - ejected + reuptakeandlost)))
+				/*if((ANCleftLSR[j]<(REAL_MAX - ejected + reuptakeandlost)) && (ANCleftLSR[j]>=(REAL_CONST(0.) - ejected + reuptakeandlost)))
 				{
 					ANCleftLSR[j]= ANCleftLSR[j]+ejected-reuptakeandlost;
 				}
 					
-				if((ANReproLSR[j]<(REAL_MAX - reuptake + reprocessed)) && (ANReproLSR[j]>(-REAL_MAX - reuptake + reprocessed)))
+				//if((ANReproLSR[j]<(REAL_MAX - reuptake + reprocessed)) && (ANReproLSR[j]>(-REAL_MAX - reuptake + reprocessed)))
+				if((ANReproLSR[j]<(REAL_MAX - reuptake + reprocessed)) && (ANReproLSR[j]>=(REAL_CONST(0.)- reuptake + reprocessed)))
 				{
 					ANReproLSR[j]=ANReproLSR[j]+ reuptake-reprocessed;
-				}
+				}*/
+				ANCleftLSR[j]= ANCleftLSR[j]+ejected-reuptakeandlost;
+				ANReproLSR[j]=ANReproLSR[j]+ reuptake-reprocessed;
+
 			}
 			else
 			{

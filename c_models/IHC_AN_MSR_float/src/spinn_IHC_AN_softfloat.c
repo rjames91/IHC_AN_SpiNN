@@ -38,7 +38,8 @@ uint index_y;
 REAL r_max_recip;
 REAL dt_spikes;
 uint resamp_fac;
-WELL1024a_seed_t seed;
+SEED_TYPE local_seed;
+uint seed_selection[SEED_SEL_SIZE];
 
 int start_count_process;
 int end_count_process;
@@ -66,18 +67,10 @@ startupVars startupValues;
 //recurring values
 REAL IHCVnow;
 REAL mICaCurr;
-REAL CaCurrLSR[NUMLSR];
 REAL CaCurrMSR[NUMMSR];
-REAL CaCurrHSR[NUMHSR];
-REAL ANCleftLSR[NUMLSR];
-REAL ANAvailLSR[NUMLSR];
-REAL ANReproLSR[NUMLSR];
 REAL ANCleftMSR[NUMMSR];
 REAL ANAvailMSR[NUMMSR];
 REAL ANReproMSR[NUMMSR];
-REAL ANCleftHSR[NUMHSR];
-REAL ANAvailHSR[NUMHSR];
-REAL ANReproHSR[NUMHSR];
 
 
 startupVars generateStartupVars(void)
@@ -86,7 +79,7 @@ startupVars generateStartupVars(void)
 	REAL Gu0,kt0,IHCV,gmax,u0,u1,s1,s0,ga,gk,et,ek,rpc,ekp,gamma,beta,mICaCurr,
 	gmaxcamsr,eca,tauca,CaCurrMSR,kt0MSR,
 	ANCleftMSR,ANAvailMSR,ANReproMSR,
-	z,power,y,x,l,rMMSR;
+	z,power,y,x,l,r,MMSR;
 
 	//======Calculate Gu0===========//
 	gmax=6e-9;//(float)Cilia.Gmax/pow(2,30);
@@ -110,7 +103,7 @@ startupVars generateStartupVars(void)
 	mICaCurr=1./(1.+exp(-gamma*IHCV)*(1./beta));
 
 	//=======Calculate CaCurrent========//
-	gmaxcamsr=7e-11;
+	gmaxcamsr=8e-11;
 	eca=0.066;
 	tauca=1e-4;
 	CaCurrMSR=((gmaxcamsr*pow(mICaCurr,3))*(IHCV-eca))*tauca;
@@ -118,11 +111,11 @@ startupVars generateStartupVars(void)
 	//========Calculate AN==========//
 	z=1e38;//reduced from 1e40 fit as single float type
 	power=3;
-	y=10;
-	x=66.3;
-	MMSR=14;
-	l=2580;
-	r=6580;
+	y=20;
+	x=30;
+	MMSR=13;
+	l=900;
+	r=100;
 
 	kt0MSR=-z*pow(CaCurrMSR,power)*100;
 	ANCleftMSR=(kt0MSR*y*MMSR)/(y*(l+r)+kt0MSR*l);
@@ -241,13 +234,26 @@ void app_init(void)
 	
 	//calculate startup values
 	startupValues=generateStartupVars();
+	
 	//initialise random number gen
-	//init_WELL1024a_simp();
-	for(uint i=0;i<33;i++)
+	//io_printf (IO_BUF, "[core %d] seed_selection=",coreID);
+	for(uint i=0;i<SEED_SEL_SIZE;i++)
 	{
-		seed[i]=coreID | (chipID<<i);
+		seed_selection[i]=mars_kiss32();
+		//io_printf (IO_BUF, "%u ",seed_selection[i]);
+
 	}
-	validate_WELL1024a_seed (seed);
+	//io_printf (IO_BUF,"\n");
+
+	io_printf (IO_BUF, "[core %d][chip %d] local_seeds=",coreID,chipID);
+	for(uint i=0;i<4;i++)
+	{
+		local_seed[i]=seed_selection[(coreID<<i)|chipID];
+		io_printf (IO_BUF, "%u ",local_seed[i]);
+	}
+	io_printf (IO_BUF,"\n");
+
+	validate_mars_kiss64_seed (local_seed);
 	
 	//initialise cilia
 	Cilia.tc= REAL_CONST(0.00012);
@@ -266,8 +272,7 @@ void app_init(void)
 	
 	//==========Recurring Values=================//
 	IHCVnow=startupValues.IHCVnow0;
-	mICaCurr=startupValues.mICaCurr0;;
-
+	mICaCurr=startupValues.mICaCurr0;
 	for(uint i=0;i<NUMMSR;i++)
 	{
 		CaCurrMSR[i]=startupValues.CaCurrMSR0;
@@ -286,23 +291,23 @@ void app_init(void)
 	preSyn.power=REAL_CONST(3.);
 	preSyn.z=1e38;//reduced from 1e40 to fit within float range (then an additional *100 is added in code)
 
-	preSyn.GmaxCa[0]=7e-11;
-	preSyn.GmaxCa[1]=7e-11;
+	preSyn.GmaxCa[0]=8e-11;
+	preSyn.GmaxCa[1]=8e-11;
 	
 	//TODO: explain these numbers
-	preSyn.CaTh[0]=0.1;//1e-42;
-	preSyn.CaTh[1]=0.1;//1e-42;
+	preSyn.CaTh[0]=0.0216;//1e-42;
+	preSyn.CaTh[1]=0.0216;//1e-42;
 
 	//=======initialise the synapse params=======//
 
-	Synapse.ldt=REAL_CONST(2580.)*dt_spikes;
-	Synapse.ydt=REAL_CONST(10.)*dt_spikes;
-	Synapse.xdt=REAL_CONST(66.3)*dt_spikes;
-	Synapse.rdt=REAL_CONST(6580.)*dt_spikes;
+	Synapse.ldt=REAL_CONST(900.)*dt_spikes;
+	Synapse.ydt=REAL_CONST(20.)*dt_spikes;
+	Synapse.xdt=REAL_CONST(30.)*dt_spikes;
+	Synapse.rdt=REAL_CONST(100.)*dt_spikes;
 	Synapse.refrac_period=((7.5e-4)/dt_spikes);
 
-	Synapse.M[0]=REAL_CONST(14.);
-	Synapse.M[1]=REAL_CONST(14.);
+	Synapse.M[0]=REAL_CONST(13.);
+	Synapse.M[1]=REAL_CONST(13.);
 	  
 #ifdef PROFILE
     // configure timer 2 for profiling
@@ -411,6 +416,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 	REAL ICa;
 	REAL CaCurr_pow;
 	REAL releaseProb_pow;
+	REAL Repro_rate;
 	REAL Synapse_ypow;
 	REAL Synapse_xpow;
 	REAL compare;
@@ -503,147 +509,139 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 			#endif
 			}*/
 
-		//=======MSR Fibres===========//
-		for (j=0;j<NUMMSR;j++)
+	//=======MSR Fibres===========//
+	for (j=0;j<NUMMSR;j++)
+	{
+		ICa=preSyn.GmaxCa[j]*micapowconv*(IHCVnow-preSyn.Eca);
+		CaCurrMSR[j]+=(-ICa-CaCurrMSR[j])*preSyn.dtTauCa;
+		if(i%resamp_fac==0)
 		{
-			ICa=preSyn.GmaxCa[j+2]*micapowconv*(IHCVnow-preSyn.Eca);
-			CaCurrMSR[j]+=(-ICa-CaCurrMSR[j])*preSyn.dtTauCa;
-			if(i%resamp_fac==0)
+			CaCurr_pow=CaCurrMSR[j];
+			for(k=0;k<(uint)preSyn.power-1;k++)
+			{			
+				CaCurr_pow=CaCurr_pow*CaCurrMSR[j];
+			}
+			//compare=max(REAL_CONST(100.)*(CaCurr_pow-preSyn.CaTh[j+2]),0);
+			compare=max((preSyn.z*CaCurr_pow-preSyn.CaTh[j]),REAL_CONST(0.));
+			//compare=max(100*(pow(CaCurrMSR[j],preSyn.power)-preSyn.CaTh[j+2]),0);
+			vrrmsr=compare*REAL_CONST(100.);
+			//saturate vrr
+			if(vrrmsr>max_rate)
 			{
-				CaCurr_pow=CaCurrMSR[j];
-				for(k=0;k<(uint)preSyn.power-1;k++)
-				{			
-					CaCurr_pow=CaCurr_pow*CaCurrMSR[j];
-				}
-				//compare=max(REAL_CONST(100.)*(CaCurr_pow-preSyn.CaTh[j+2]),0);
-				compare=max((preSyn.z*CaCurr_pow-preSyn.CaTh[j+2]),REAL_CONST(0.));
-				//compare=max(100*(pow(CaCurrMSR[j],preSyn.power)-preSyn.CaTh[j+2]),0);
-				vrrmsr=compare*REAL_CONST(100.);
-				//saturate vrr
-				if(vrrmsr>max_rate)
-				{
-					vrrmsr=max_rate;
-				}
-				//=====Release Probability=======//
-				releaseProb=vrrmsr*dt_spikes;
-				M_q=Synapse.M[j+2]-ANAvailMSR[j];
-				if(M_q<0)
-				{
-					M_q=0;
-				}
-	
-				//===========Ejected===========//
+				vrrmsr=max_rate;
+			}
+			//=====Release Probability=======//
+			releaseProb=vrrmsr*dt_spikes;
+			M_q=Synapse.M[j]-ANAvailMSR[j];
+			if(M_q<0)
+			{
+				M_q=0;
+			}
+
+			//===========Ejected===========//
+		
+			releaseProb_pow=REAL_CONST(1.);
+			for(k=0;k<(uint)ANAvailMSR[j];k++)
+			{			
+				releaseProb_pow=releaseProb_pow*(REAL_CONST(1.)-releaseProb);
+			}
+			Probability=REAL_CONST(1.)-releaseProb_pow;			
+		
+			if (refrac_msr[j]>0)
+			{
+				refrac_msr[j]--;
+			}				
 			
-				releaseProb_pow=REAL_CONST(1.);
-				for(k=0;k<(uint)ANAvailMSR[j];k++)
-				{			
-					releaseProb_pow=releaseProb_pow*(REAL_CONST(1.)-releaseProb);
-				}
-				Probability=REAL_CONST(1.)-releaseProb_pow;			
-				//Probability=1-pow(1-releaseProb,ANAvailMSR[j]);
-		/*		if (refrac_msr[j]>0)
+			if(Probability>((REAL)random_gen()*r_max_recip))
+			{
+				ejected=REAL_CONST(1.);
+				if (refrac_msr[j]<=0)
 				{
-					//decrement refrac counter until it's zero
-					refrac_msr[j]--;
-					ejected=REAL_CONST(0.);
-				}
-	
-				else if(Probability>((REAL)random_gen()*r_max_recip))
-				{
-					ejected=REAL_CONST(1.);
-					//refrac_msr[j]=round(Synapse.refrac_period/dt + (((REAL)random_gen()/r_max)*Synapse.refrac_period)/dt);
-					refrac_msr[j]=(uint)(Synapse.refrac_period/dt_spikes + (((REAL)random_gen()*r_max_recip)*Synapse.refrac_period)/dt_spikes);
-					//refrac_msr[j]=(uint)(Synapse.refrac_period + (((REAL)random_gen()*r_max_recip)*Synapse.refrac_period));
+					spikes=REAL_CONST(1.);
+					refrac_msr[j]=(uint)(Synapse.refrac_period + (((REAL)random_gen()*r_max_recip)*Synapse.refrac_period)+REAL_CONST(0.5));
 				}
 				else
 				{
-					ejected=REAL_CONST(0.);
-				}
-				*/
-			
-				if (refrac_msr[j]>0)
-				{
-					refrac_msr[j]--;
-				}				
-				
-				if(Probability>((REAL)random_gen()*r_max_recip))
-				{
-					ejected=REAL_CONST(1.);
-					if (refrac_msr[j]<=0)
-					{
-						spikes=REAL_CONST(1.);
-						refrac_msr[j]=(uint)(Synapse.refrac_period + (((REAL)random_gen()*r_max_recip)*Synapse.refrac_period)+REAL_CONST(0.5));
-					}
-					else
-					{
-						spikes=REAL_CONST(0.);
-					}
-				}
-				else
-				{
-					ejected=REAL_CONST(0.);
 					spikes=REAL_CONST(0.);
 				}
-	
-				//========Reprocessed==========//		
-				Synapse_xpow=REAL_CONST(1.);
-				Synapse_ypow=REAL_CONST(1.);
-				for(k=0;k<(uint)M_q;k++)
-				{			
-					Synapse_xpow=Synapse_xpow*(REAL_CONST(1.)-(ANReproMSR[j]*Synapse.xdt));
-					Synapse_ypow=Synapse_ypow*(REAL_CONST(1.)-(Synapse.ydt));
-				}
-	
-				Probability=REAL_CONST(1.)-Synapse_xpow;			
-				//Probability=1-pow(1-(ANReproMSR[j]*Synapse.x*dt),M_q);
-				if(Probability>((REAL)random_gen()*r_max_recip))
-				{
-					reprocessed=REAL_CONST(1.);
-				}
-				else
-				{
-					reprocessed=REAL_CONST(0.);
-				}
-	
-				//=========Replenish============//
-				
-				Probability=REAL_CONST(1.)-Synapse_ypow;
-				//Probability=1-pow(1-Synapse.y*dt,M_q);
-				if(Probability>((REAL)random_gen()*r_max_recip))
-				{
-					replenish=REAL_CONST(1.);
-				}
-				else
-				{
-					replenish=REAL_CONST(0.);
-				}
-	
-				//========Update Variables=======//
-				ANAvailMSR[j]=ANAvailMSR[j]+replenish+reprocessed-ejected;
-				reuptakeandlost=(Synapse.rdt+Synapse.ldt)*ANCleftMSR[j];
-				reuptake=Synapse.rdt*ANCleftMSR[j];
-				
-				if((ANCleftMSR[j]<(REAL_MAX - ejected + reuptakeandlost)) && (ANCleftMSR[j]>(-REAL_MAX - ejected + reuptakeandlost)))
-				{
-					ANCleftMSR[j]= ANCleftMSR[j]+ejected-reuptakeandlost;
-				}
-				
-				if((ANReproMSR[j]<(REAL_MAX - reuptake + reprocessed)) && (ANReproMSR[j]>(-REAL_MAX - reuptake + reprocessed)))
-				{
-					ANReproMSR[j]=ANReproMSR[j]+ reuptake-reprocessed;
-				}
-			
 			}
 			else
 			{
-				//ejected=REAL_CONST(0.);
+				ejected=REAL_CONST(0.);
 				spikes=REAL_CONST(0.);
-			}	
-			//=======write value to SDRAM=======//  
-			//out_buffer[((j+2)*SEGSIZE)+i] =ANReproMSR[j];//ANAvailMSR[j];//vrrmsr;// compare;//CaCurr_pow;//
-			out_buffer[((j+2)*SEGSIZE)+i] =spikes;//ejected;//
+			}
+
+			//========Reprocessed==========//		
+			Repro_rate=ANReproMSR[j]*Synapse.xdt;
+			if(Repro_rate>REAL_CONST(1.))
+			{
+				Repro_rate=REAL_CONST(1.);
+			}
 			
+			Synapse_xpow=REAL_CONST(1.);
+			Synapse_ypow=REAL_CONST(1.);
+			for(k=0;k<(uint)M_q;k++)
+			{			
+				Synapse_xpow=Synapse_xpow*(REAL_CONST(1.)-Repro_rate);
+				//Synapse_xpow=Synapse_xpow*(REAL_CONST(1.)-(ANReproMSR[j]*Synapse.xdt));
+				Synapse_ypow=Synapse_ypow*(REAL_CONST(1.)-(Synapse.ydt));
+			}
+
+			Probability=REAL_CONST(1.)-Synapse_xpow;			
+			//Probability=1-pow(1-(ANReproMSR[j]*Synapse.x*dt),M_q);
+			if(Probability>((REAL)random_gen()*r_max_recip))
+			{
+				reprocessed=REAL_CONST(1.);
+			}
+			else
+			{
+				reprocessed=REAL_CONST(0.);
+			}
+
+			//=========Replenish============//
+			
+			Probability=REAL_CONST(1.)-Synapse_ypow;
+			//Probability=1-pow(1-Synapse.y*dt,M_q);
+			if(Probability>((REAL)random_gen()*r_max_recip))
+			{
+				replenish=REAL_CONST(1.);
+			}
+			else
+			{
+				replenish=REAL_CONST(0.);
+			}
+
+			//========Update Variables=======//
+			ANAvailMSR[j]=ANAvailMSR[j]+replenish+reprocessed-ejected;
+			reuptakeandlost=(Synapse.rdt+Synapse.ldt)*ANCleftMSR[j];
+			reuptake=Synapse.rdt*ANCleftMSR[j];
+			
+			//if((ANCleftMSR[j]<(REAL_MAX - ejected + reuptakeandlost)) && (ANCleftMSR[j]>(-REAL_MAX - ejected + reuptakeandlost)))
+		/*	if((ANCleftMSR[j]<(REAL_MAX - ejected + reuptakeandlost)) && (ANCleftMSR[j]>=(REAL_CONST(0.) - ejected + reuptakeandlost)))
+			{
+				ANCleftMSR[j]= ANCleftMSR[j]+ejected-reuptakeandlost;
+			}
+			
+			//if((ANReproMSR[j]<(REAL_MAX - reuptake + reprocessed)) && (ANReproMSR[j]>(-REAL_MAX - reuptake + reprocessed)))
+			if((ANReproMSR[j]<(REAL_MAX - reuptake + reprocessed)) && (ANReproMSR[j]>=(REAL_CONST(0.) - reuptake + reprocessed)))
+			{
+				ANReproMSR[j]=ANReproMSR[j]+ reuptake-reprocessed;
+			}
+			*/
+			ANCleftMSR[j]= ANCleftMSR[j]+ejected-reuptakeandlost;
+			ANReproMSR[j]=ANReproMSR[j]+ reuptake-reprocessed;
+
 		}
+		else
+		{
+			//ejected=REAL_CONST(0.);
+			spikes=REAL_CONST(0.);
+		}	
+		//=======write value to SDRAM=======//  
+		//out_buffer[((j+2)*SEGSIZE)+i] =ANReproMSR[j];//ANAvailMSR[j];//vrrmsr;// compare;//CaCurr_pow;//
+		out_buffer[((j)*SEGSIZE)+i] =spikes;//ejected;//
+		
+	}
 
 #ifdef LOOP_PROFILE
   int end_max_count_read = tc[T2_COUNT];

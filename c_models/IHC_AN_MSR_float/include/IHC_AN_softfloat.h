@@ -11,13 +11,13 @@
 #define REAL float
 #define REAL_CONST(x) x##f
 #define REAL_MAX 1e38
-#define random_gen() WELL1024a_seed(seed)//mars_kiss32()//spin1_rand()//WELL1024a_simp()//rand()//
+#define random_gen() mars_kiss64_seed(local_seed)//mars_kiss32()//seed_scrambled_rgen()//WELL1024a_seed(seed)//spin1_rand()//WELL1024a_simp()//rand()//
 #define RDM_MAX (UINT32_MAX+REAL_CONST(1.0))//(RAND_MAX+REAL_CONST(1.0))//
+#define SEED_TYPE mars_kiss64_seed_t//WELL1024a_seed_t
+#define SEED_SEL_SIZE 1024
 
 #define SEGSIZE (uint)100//200
-#define NUMLSR 2
 #define NUMMSR 2
-#define NUMHSR 6
 #define NUMFIBRES 10
 
 #define TIMER2_CONF        0x82

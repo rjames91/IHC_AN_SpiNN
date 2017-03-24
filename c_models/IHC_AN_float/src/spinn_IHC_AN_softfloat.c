@@ -18,7 +18,7 @@
 #include "random.h"
 #include "stdfix-exp.h"
 
-#define TIMER_TICK_PERIOD  30000//150000//135000//116000//110000
+#define TIMER_TICK_PERIOD  30000
 #define TOTAL_TICKS 173//197       
 #define PROFILE
 //#define LOOP_PROFILE
@@ -39,7 +39,8 @@ REAL r_max_recip;
 REAL dt_spikes;
 uint resamp_fac;
 SEED_TYPE local_seed;
-uint seed_selection[SEED_SEL_SIZE];
+
+uint seed_selection[SEED_SEL_SIZE];//TODO:this needs to be moved to SDRAM
 
 int start_count_process;
 int end_count_process;
@@ -91,18 +92,18 @@ startupVars generateStartupVars(void)
 	ANReproHSR,z,power,y,x,l,r,MLSR,MMSR,MHSR;
 
 	//======Calculate Gu0===========//
-	gmax=6e-9;//(float)Cilia.Gmax/pow(2,30);
-	u0=5e-9;//(float)Cilia.u0/pow(2,30);
-	u1=1e-9;//(float)Cilia.u1/pow(2,30);
-	s1=1e-9;//(float)Cilia.recips1/pow(2,1);
-	s0=3e-8;//(float)Cilia.recips0/pow(2,1);
-	ga=8e-10;//(float)Cilia.Ga/pow(2,31);
+	gmax=6e-9;
+	u0=5e-9;
+	u1=1e-9;
+	s1=1e-9;
+	s0=3e-8;
+	ga=8e-10;
 	Gu0=ga+gmax/(1+(exp(u0/s0)*(1+exp(u1/s1))));
 	//======Calculate IHCVnow=========//
-	gk=2e-8;//(float)Cilia.Gk/pow(2,30);
-	et=0.1;//(float)Cilia.Et/pow(2,30);
-	ek=-0.08;//(float)Cilia.Ek/pow(2,30);
-	rpc=0.04;//(float)Cilia.Rpc/pow(2,30);
+	gk=2e-8;
+	et=0.1;
+	ek=-0.08;
+	rpc=0.04;
 	ekp=ek+rpc*et;
 	IHCV=(gk*ekp+Gu0*et)/(Gu0+gk);
 
@@ -132,7 +133,7 @@ startupVars generateStartupVars(void)
 	l=900;
 	r=100;
 
-	kt0LSR=-z*pow(CaCurrLSR,power)*100;//added *100
+	kt0LSR=-z*pow(CaCurrLSR,power)*100;//added *100 for single float z
 	kt0MSR=-z*pow(CaCurrMSR,power)*100;
 	kt0HSR=-z*pow(CaCurrHSR,power)*100;
 	ANCleftLSR=(kt0LSR*y*MLSR)/(y*(l+r)+kt0LSR*l);
@@ -160,9 +161,6 @@ startupVars generateStartupVars(void)
 	out.ANReproLSR0=ANReproLSR;
 	out.ANReproMSR0=ANReproMSR;
 	out.ANReproHSR0=ANReproHSR;
-	
-	//io_printf (IO_BUF, "[core %d] IHCV=%n.mk ekp=%f mICaCurr=%f CaL=%f CaM=%f CaH=%f CleftL=%f CleftM=%f CleftH=%f RepL=%f RepM=%f RepH=%f"
-	//								, (accum)IHCV,ekp,mICaCurr,CaCurrLSR,CaCurrMSR,CaCurrHSR,ANCleftLSR,ANCleftMSR,ANCleftHSR,ANReproLSR,ANReproMSR,ANReproHSR);
 	
 	return out;
 }
@@ -235,7 +233,7 @@ void app_init(void)
 	
 		for (uint i=0;i<NUMFIBRES * (uint)44100.;i++)
 		{
-			sdramout_buffer[i]  = 0;//((uint)1<<31)-1;//0x5a5a5a5a;
+			sdramout_buffer[i]  = 0;
 			sdramin_buffer[i]  = 0;
 		}
 		
@@ -273,7 +271,7 @@ void app_init(void)
 	io_printf (IO_BUF, "[core %d][chip %d] local_seeds=",coreID,chipID);
 	for(uint i=0;i<4;i++)
 	{
-		local_seed[i]=seed_selection[(coreID<<i)|chipID];
+		local_seed[i]=seed_selection[((chipID<<8) | (coreID<<i))];//seed_selection[(coreID<<i)|(chipID<<8)];
 		io_printf (IO_BUF, "%u ",local_seed[i]);
 	}
 	io_printf (IO_BUF,"\n");
@@ -344,7 +342,7 @@ void app_init(void)
 	preSyn.GmaxCa[9]=5e-10;
 
 
-	//the follwing variables are equal to z*CaTh^3
+	//the follwing variables are equal to z*CaTh^3 used in the vesicle release rate equations
 	preSyn.CaTh[0]=1e-7;
 	preSyn.CaTh[1]=1e-7;
 	preSyn.CaTh[2]=0.0216;
@@ -443,7 +441,7 @@ void data_read(uint ticks, uint null)
 	REAL *dtcm_buffer_in;
 
 	//read from DMA and copy into DTCM
-	if(test_DMA == TRUE)// && ticks<TOTAL_TICKS)
+	if(test_DMA == TRUE)
 	{
 		//assign recieve buffer
 		if(!read_switch)	
@@ -506,7 +504,8 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 	REAL Guconv;
 	REAL mICaINF;
 	REAL micapowconv;
-	REAL ICa;
+	//REAL ICa;
+	fract ICa;
 	REAL pos_CaCurr;
 	REAL CaCurr_pow;
 	REAL releaseProb_pow;
@@ -516,8 +515,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 	REAL compare;
 	REAL vrrlsr;
 	REAL vrrmsr;
-	REAL vrrhsr;
-	
+	REAL vrrhsr;	
 	REAL releaseProb;
 	REAL M_q;
 	REAL Probability;
@@ -532,17 +530,19 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 	io_printf (IO_BUF, "[core %d] segment %d (offset=%d) starting processing\n", coreID,seg_index,segment_offset);
 #endif
 	for(i=0;i<SEGSIZE;i++)
-	{		
+	{	
+		  
+			if(i==0)
+			{
+			#ifdef PROFILE
+			  start_count_process = tc[T2_COUNT];
+			#endif
+			}
+		
 		//===========Apply Scaler============//
   	  	utconv=in_buffer[i] * Cilia.C;
   	  	
 		//=========Apical Conductance========//	
-		/*if(i==0)
-		{
-		#ifdef PROFILE
-		  start_count_process = tc[T2_COUNT];
-		#endif
-		}*/
 
 		ex1=expk((accum)(-(utconv-Cilia.u1)*Cilia.recips1));
 		ex2=expk((accum)(-(utconv-Cilia.u0)*Cilia.recips0));
@@ -551,14 +551,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 		//ex2=exp(-(utconv-Cilia.u0)*Cilia.recips0);
   	  	
   	  	Guconv=Cilia.Ga + (Cilia.Gmax/(REAL_CONST(1.)+(REAL)ex2*(REAL_CONST(1.)+(REAL)ex1)));
-		//Guconv=Cilia.Ga + (Cilia.Gmax/(REAL_CONST(1.)+exp(-(utconv-Cilia.u0)*Cilia.recips0)*(REAL_CONST(1.)+exp(-(utconv-Cilia.u1)*Cilia.recips1))));
-	/*	if(i==0)
-		{
-		#ifdef PROFILE
-		  end_count_process = tc[T2_COUNT];
-		  dtcm_profile_buffer[1+((seg_index-1)*3)]=start_count_process-end_count_process;
-		#endif
-		}*/  
+ 
 		//========Receptor Potential=========//
 		IHCVnow+=((-Guconv*(IHCVnow-Cilia.Et))-(Cilia.Gk*(IHCVnow-startupValues.Ekp)))*Cilia.dtCap;
 	
@@ -567,7 +560,6 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 		//ex1=exp(-preSyn.gamma*IHCVnow);
 		
 		mICaINF=REAL_CONST(1.)/(REAL_CONST(1.)+(REAL)ex1*preSyn.recipBeta);
-		//mICaINF=REAL_CONST(1.)/(REAL_CONST(1.)+exp(-preSyn.gamma*IHCVnow)*preSyn.recipBeta);
 		mICaCurr+=(mICaINF-mICaCurr)*preSyn.dtTauM;
 		if(mICaCurr<REAL_CONST(0.))
 		{
@@ -576,12 +568,21 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 
 		//================ICa================//
 		//calculate values for each fibre	
-		//micapowconv=pow(mICaCurr,preSyn.power);
 		micapowconv=mICaCurr;
 		for(k=0;k<preSyn.power-1;k++)
 		{
 			micapowconv=micapowconv*mICaCurr;
 		}
+		
+		
+		if(i==0)
+		{
+			#ifdef PROFILE
+			  end_count_process = tc[T2_COUNT];
+			  dtcm_profile_buffer[1+((seg_index-1)*3)]=start_count_process-end_count_process;
+			#endif
+		}
+		
 
 #ifdef LOOP_PROFILE
   int end_apical_count_read = tc[T2_COUNT];
@@ -591,13 +592,8 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 #ifdef LOOP_PROFILE
   int start_max_count_read = tc[T2_COUNT];
 #endif
-  
-/*	if(i==0)
-	{
-	#ifdef PROFILE
-	  start_count_process = tc[T2_COUNT];
-	#endif
-	}*/
+
+
 		//============LSR Fibres=============//
 		for (j=0;j<NUMLSR;j++)
 		{
@@ -619,9 +615,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 				{			
 					CaCurr_pow=CaCurr_pow*pos_CaCurr;
 				}
-				//compare=max(REAL_CONST(100.)*(CaCurr_pow-preSyn.CaTh[j]),0);	
 				compare=max((preSyn.z*CaCurr_pow-preSyn.CaTh[j]),REAL_CONST(0.));	
-				//compare=max(REAL_CONST(100.)*(pow(CaCurrLSR[j],preSyn.power)-preSyn.CaTh[j]),0);		
 				vrrlsr=compare*REAL_CONST(100.);
 				//saturate vrr
 				if(vrrlsr>max_rate)
@@ -733,22 +727,14 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 			}
 			else
 			{
-				//ejected=REAL_CONST(0.);
 				spikes=REAL_CONST(0.);
 			}	
 			//=======write value to SDRAM========//
 			//out_buffer[(j*SEGSIZE)+i]  = ANReproLSR[j];//ANAvailLSR[j];//vrrlsr;// compare;//CaCurr_pow;//
-			out_buffer[(j*SEGSIZE)+i]  = spikes;//ejected;//
+			out_buffer[(j*SEGSIZE)+i]  = spikes;
 			
 		}
-		
-/*		if(i==0)
-			{
-			#ifdef PROFILE
-			  end_count_process = tc[T2_COUNT];
-			  dtcm_profile_buffer[1+((seg_index-1)*3)]=start_count_process-end_count_process;
-			#endif
-			}*/
+
 
 		//=======MSR Fibres===========//
 		for (j=0;j<NUMMSR;j++)
@@ -770,16 +756,14 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 				{			
 					CaCurr_pow=CaCurr_pow*pos_CaCurr;
 				}
-				//compare=max(REAL_CONST(100.)*(CaCurr_pow-preSyn.CaTh[j+2]),0);
 				compare=max((preSyn.z*CaCurr_pow-preSyn.CaTh[j+2]),REAL_CONST(0.));
-				//compare=max(100*(pow(CaCurrMSR[j],preSyn.power)-preSyn.CaTh[j+2]),0);
 				vrrmsr=compare*REAL_CONST(100.);
 				//saturate vrr
 				if(vrrmsr>max_rate)
 				{
 					vrrmsr=max_rate;
 				}
-				//=====Release Probability=======//
+				//=====Rele2nd halfase Probability=======//
 				releaseProb=vrrmsr*dt_spikes;
 				M_q=Synapse.M[j+2]-ANAvailMSR[j];
 				if(M_q<REAL_CONST(0.))
@@ -832,12 +816,10 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 				for(k=0;k<(uint)M_q;k++)
 				{			
 					Synapse_xpow=Synapse_xpow*(REAL_CONST(1.)-Repro_rate);
-					//Synapse_xpow=Synapse_xpow*(REAL_CONST(1.)-(ANReproMSR[j]*Synapse.xdt));
 					Synapse_ypow=Synapse_ypow*(REAL_CONST(1.)-(Synapse.ydt));
 				}
 	
 				Probability=REAL_CONST(1.)-Synapse_xpow;			
-				//Probability=1-pow(1-(ANReproMSR[j]*Synapse.x*dt),M_q);
 				if(Probability>((REAL)random_gen()*r_max_recip))
 				{
 					reprocessed=REAL_CONST(1.);
@@ -850,7 +832,6 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 				//=========Replenish============//
 				
 				Probability=REAL_CONST(1.)-Synapse_ypow;
-				//Probability=1-pow(1-Synapse.y*dt,M_q);
 				if(Probability>((REAL)random_gen()*r_max_recip))
 				{
 					replenish=REAL_CONST(1.);
@@ -888,7 +869,6 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 			}
 			else
 			{
-				//ejected=REAL_CONST(0.);
 				spikes=REAL_CONST(0.);
 			}	
 			//=======write value to SDRAM=======//  
@@ -971,9 +951,10 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 				{
 					Repro_rate=REAL_CONST(1.);
 				}
+				
+				//(1-Repro_rate)^M_q and (1-Synapse.ydt)^M_q
 				Synapse_xpow=REAL_CONST(1.);
-				Synapse_ypow=REAL_CONST(1.);
-	
+				Synapse_ypow=REAL_CONST(1.);				
 				for(k=0;k<(uint)M_q;k++)
 				{	
 					Synapse_ypow=Synapse_ypow*(REAL_CONST(1.)-Synapse.ydt);				
@@ -1030,14 +1011,16 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 			}
 			else
 			{
-				//ejected=REAL_CONST(0.);
 				spikes=REAL_CONST(0.);
 			}				
 			//=========write value to SDRAM========//  
 			//out_buffer[((j+4)*SEGSIZE)+i]  = ANReproHSR[j];//ANAvailHSR[j];//vrrhsr;//compare;//CaCurr_pow;//
-			out_buffer[((j+4)*SEGSIZE)+i]  = spikes;//ejected;//
-		
+			out_buffer[((j+4)*SEGSIZE)+i]  = spikes;
+			
+
 		}
+
+
 #ifdef LOOP_PROFILE
   int end_max_count_read = tc[T2_COUNT];
   io_printf (IO_BUF, "second half complete in %d ticks (sample %d, segment %d)\n",start_max_count_read-end_max_count_read,i,seg_index);
@@ -1068,9 +1051,9 @@ void transfer_handler(uint tid, uint ttag)
 		//increment segment index
 		seg_index++;
 		
-		#ifdef PROFILE
+		/*#ifdef PROFILE
 		  start_count_process = tc[T2_COUNT];
-		#endif
+		#endif*/
 		
 		//choose current buffers
 		if(!read_switch && !write_switch)
@@ -1103,13 +1086,13 @@ io_printf (IO_BUF, "buff_a-->buff_y\n");
 			index_y=process_chan(dtcm_buffer_y,dtcm_buffer_a);
 		}		  
 			
-		#ifdef PROFILE
+		/*#ifdef PROFILE
 			  end_count_process = tc[T2_COUNT];
 			  dtcm_profile_buffer[1+((seg_index-1)*3)]=start_count_process-end_count_process;
 		#ifdef PRINT 
 			io_printf (IO_BUF, "process complete in %d ticks (segment %d)\n",start_count_process-end_count_process,seg_index);
 		#endif	
-		#endif			
+		#endif		*/	
 		
 		spin1_trigger_user_event(NULL,NULL);
 	}

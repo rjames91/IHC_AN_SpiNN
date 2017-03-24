@@ -14,7 +14,11 @@
 #define random_gen() mars_kiss64_seed(local_seed)//seed_scrambled_rgen()//WELL1024a_seed(seed)//mars_kiss32()//spin1_rand()//WELL1024a_simp()//rand()//
 #define RDM_MAX (UINT32_MAX+REAL_CONST(1.0))//(RAND_MAX+REAL_CONST(1.0))//
 #define SEED_TYPE mars_kiss64_seed_t//WELL1024a_seed_t
-#define SEED_SEL_SIZE 1024
+//#define SEED_SEL_SIZE 65792//256<<8 | 256 (maximum chipID)//1024
+#define MAX_CHIPX 1//255
+#define MAX_CHIPY 1//255
+#define MAX_COREID 16
+#define SEED_SEL_SIZE (((MAX_CHIPX << 8) | MAX_CHIPY) << 8) | (MAX_COREID << 3)   
 
 #define SEGSIZE (uint)100//200
 #define NUMLSR 2
@@ -36,8 +40,12 @@ REAL Ga,tc,C,u0,recips0,u1,recips1,Gmax,dtCap,Et,Gk,Ek,Rpc;
 } IHC_ciliaParams;
 
 typedef struct {
-REAL Eca,recipBeta,gamma,dtTauM,dtTauCa,power,z;
-REAL GmaxCa[10];
+//REAL Eca,recipBeta,gamma,dtTauM,dtTauCa,power,z;
+REAL recipBeta,gamma,dtTauM,dtTauCa,power,z;
+fract Eca;
+//REAL GmaxCa[10];
+fract GmaxCa[10];
+
 REAL CaTh[10];
 } IHC_preSynParams;
 

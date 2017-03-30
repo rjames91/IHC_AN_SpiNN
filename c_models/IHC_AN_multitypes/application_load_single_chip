@@ -1,0 +1,17 @@
+app_load ../model_binaries/IHC_AN_multitypes.aplx . 1 20
+app_load ../model_binaries/IHC_AN_multitypes.aplx . 2 20
+app_load ../model_binaries/IHC_AN_multitypes.aplx . 3 20
+app_load ../model_binaries/IHC_AN_multitypes.aplx . 4 20
+app_load ../model_binaries/IHC_AN_multitypes.aplx . 5 20
+app_load ../model_binaries/IHC_AN_multitypes.aplx . 6 20
+app_load ../model_binaries/IHC_AN_multitypes.aplx . 7 20
+app_load ../model_binaries/IHC_AN_multitypes.aplx . 8 20
+app_load ../model_binaries/IHC_AN_multitypes.aplx . 9 20
+app_load ../model_binaries/IHC_AN_multitypes.aplx . 10 20
+app_load ../model_binaries/IHC_AN_multitypes.aplx . 11 20
+app_load ../model_binaries/IHC_AN_multitypes.aplx . 12 20
+app_load ../model_binaries/IHC_AN_multitypes.aplx . 13 20
+app_load ../model_binaries/IHC_AN_multitypes.aplx . 14 20
+app_load ../model_binaries/IHC_AN_multitypes.aplx . 15 20
+app_load ../model_binaries/IHC_AN_multitypes.aplx . 16 20
+

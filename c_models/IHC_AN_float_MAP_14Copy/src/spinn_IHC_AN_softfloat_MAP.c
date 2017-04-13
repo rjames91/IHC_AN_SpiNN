@@ -20,7 +20,7 @@
 
 #define TIMER_TICK_PERIOD (3000 * NUMFIBRES) //TODO: make this dependent on numfibres
 #define TOTAL_TICKS 200//173//197       
-//#define PROFILE
+#define PROFILE
 //#define LOOP_PROFILE
 //#define PRINT
 

@@ -20,21 +20,19 @@
 //#define SEED_SEL_SIZE (((MAX_CHIPX << 8) | MAX_CHIPY) << 8) | (MAX_COREID << 3)   
 #define SEED_SEL_SIZE 1024
 
-#define SEGSIZE (uint)100//200
-#define NUMLSR 10
+#define SEGSIZE 100//200 //
+#define NUMLSR 1//10
 #define NUMMSR 0
-#define NUMHSR 10
-#define NUMFIBRES 20
+#define NUMHSR 1//10
+#define NUMFIBRES 2//20
 
 #define SAMPLING_FREQUENCY 44100.f
-#define RESAMPLE_FACTOR 5
-
+#define RESAMPLE_FACTOR 20//5
 
 #define MAX_SIGNAL_S 1
 
 #define TIMER2_CONF        0x82
 #define TIMER2_LOAD        0
-
 
 #define max(a,b) \
    ({ __typeof__ (a) _a = (a); \
@@ -47,7 +45,7 @@ REAL Ga,tc,C,u0,recips0,u1,recips1,Gmax,dtCap,Et,Gk,Ek,Rpc;
 
 typedef struct {
 REAL Eca,recipBeta,gamma,dtTauM,power,z;
-REAL TauCa[NUMFIBRES];
+REAL recTauCa[NUMFIBRES];
 REAL GmaxCa[NUMFIBRES];
 REAL CaTh[NUMFIBRES];
 } IHC_preSynParams;

@@ -18,8 +18,8 @@
 #include "random.h"
 #include "stdfix-exp.h"
 
-#define TIMER_TICK_PERIOD (3000 * NUMFIBRES) //TODO: make this dependent on numfibres
-#define TOTAL_TICKS 200//173//197       
+#define TIMER_TICK_PERIOD 23000//REALTIME (23ms to process 100 44100Hz samples TODO: make this dependent on numfibres
+#define TOTAL_TICKS 240//173//197       
 #define PROFILE
 //#define LOOP_PROFILE
 //#define PRINT
@@ -67,7 +67,8 @@ IHC_synParams Synapse;
 
 startupVars startupValues;
 //recurring values
-REAL IHCVnow;
+//REAL IHCVnow;
+long fract IHCVnow;
 REAL mICaCurr;
 REAL CaCurr[NUMFIBRES];
 REAL ANCleft[NUMFIBRES];
@@ -304,7 +305,7 @@ void app_init(void)
 		ANRepro[i]=startupValues.ANReproLSR0;
 		refrac[i]=0;
 		preSyn.GmaxCa[i]=14e-9;
-		preSyn.TauCa[i]=30e-6;
+		preSyn.recTauCa[i]=1./30e-6;
 		Synapse.M[i]=REAL_CONST(12.);
 	}
 	for(uint i=0;i<NUMMSR;i++)
@@ -315,7 +316,7 @@ void app_init(void)
 		ANRepro[i+NUMLSR]=startupValues.ANReproMSR0;
 		refrac[i+NUMLSR]=0;
 		preSyn.GmaxCa[i+NUMLSR]=14e-9;
-		preSyn.TauCa[i+NUMLSR]=0;
+		preSyn.recTauCa[i+NUMLSR]=0;
 		Synapse.M[i+NUMLSR]=REAL_CONST(12.);
 	}
 	for(uint i=0;i<NUMHSR;i++) 
@@ -326,7 +327,7 @@ void app_init(void)
 		ANRepro[i+NUMLSR+NUMMSR]=startupValues.ANReproHSR0;
 		refrac[i+NUMLSR+NUMMSR]=0;
 		preSyn.GmaxCa[i+NUMLSR+NUMMSR]=14e-9;
-		preSyn.TauCa[i+NUMLSR+NUMMSR]=80e-6;
+		preSyn.recTauCa[i+NUMLSR+NUMMSR]=1./80e-6;
 		Synapse.M[i+NUMLSR+NUMMSR]=REAL_CONST(12.);
 	}
 	
@@ -529,7 +530,6 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 		}*/
 
 		//================ICa================//
-		//calculate values for each fibre	
 		micapowconv=mICaCurr;
 		for(k=0;k<preSyn.power-1;k++)
 		{
@@ -565,8 +565,8 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 		{
 			//======Synaptic Ca========//
 			ICa=preSyn.GmaxCa[j]*micapowconv*(IHCVnow-preSyn.Eca);
-			//CaCurr[j]+=(ICa-CaCurr[j])*preSyn.dtTauCa;
-			CaCurr[j]+=ICa*dt - (CaCurr[j]*dt)/preSyn.TauCa[j];
+			//CaCurr[j]+=ICa*dt - (CaCurr[j]*dt)/preSyn.TauCa[j];
+			CaCurr[j]+=ICa*dt - (CaCurr[j]*dt)*preSyn.recTauCa[j];
 			/*if(CaCurr[j]>REAL_CONST(0.))
 			{
 				CaCurr[j]=REAL_CONST(0.);
@@ -608,6 +608,8 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 				}
 	
 				Probability=REAL_CONST(1.)-releaseProb_pow;
+
+				//out_buffer[(j*spike_seg_size)+(si-1)]  = ANRepro[j];
 			
 				if (refrac[j]>0)
 				{
@@ -634,7 +636,8 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 				}
 	
 				//=========Reprocessed=========//
-				Repro_rate=ANRepro[j]*Synapse.xdt;
+				//Repro_rate=ANRepro[j]*Synapse.xdt;
+				Repro_rate=Synapse.xdt;
 				/*if(Repro_rate>REAL_CONST(1.))
 				{
 					Repro_rate=REAL_CONST(1.);
@@ -644,8 +647,13 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 				Synapse_ypow=REAL_CONST(1.);
 				for(k=0;k<(uint)M_q;k++)
 				{			
-					Synapse_xpow=Synapse_xpow*(REAL_CONST(1.)-Repro_rate);
+					//Synapse_xpow=Synapse_xpow*(REAL_CONST(1.)-Repro_rate);
 					Synapse_ypow=Synapse_ypow*(REAL_CONST(1.)-Synapse.ydt);
+				}
+
+				for(k=0;k<(uint)ANRepro[j];k++)
+				{
+					Synapse_xpow=Synapse_xpow*(REAL_CONST(1.)-Repro_rate);					
 				}
 
 				Probability=REAL_CONST(1.)-Synapse_xpow;			
@@ -695,7 +703,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 				
 				//=======write value to SDRAM========//
 				//out_buffer[(j*SEGSIZE)+i]  = ANReproLSR[j];//ANAvailLSR[j];//vrrlsr;// compare;//CaCurr_pow;//
-				out_buffer[(j*spike_seg_size)+(si-1)]  = spikes;//pos_CaCurr;//ICa;//in_buffer[i];//
+				out_buffer[(j*spike_seg_size)+(si-1)]  = spikes;//releaseProb;//pos_CaCurr;//ICa;//in_buffer[i];//
 				
 				//io_printf (IO_BUF, "[core %d] index=%d\n", coreID,(j*spike_seg_size)+(si-1));
 			}

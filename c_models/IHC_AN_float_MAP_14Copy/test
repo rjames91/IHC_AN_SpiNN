@@ -64,38 +64,6 @@ sp 6 6
 @ application_load_single_chip
 sp 5 5
 @ application_load_single_chip
-sp 4 6
-@ application_load_single_chip
-sp 4 5
-@ application_load_single_chip
-sp 3 5
-@ application_load_single_chip
-sp 1 4
-@ application_load_single_chip
-sp 6 2
-@ application_load_single_chip
-sp 7 3
-@ application_load_single_chip
-sp 7 4
-@ application_load_single_chip
-sp 7 5
-@ application_load_single_chip
-sp 7 6
-@ application_load_single_chip
-sp 7 7
-@ application_load_single_chip
-sp 6 7
-@ application_load_single_chip
-sp 5 6
-@ application_load_single_chip
-sp 5 7
-@ application_load_single_chip
-sp 4 7
-@ application_load_single_chip
-sp 3 6
-@ application_load_single_chip
-sp 2 5
-@ application_load_single_chip
 @ timed_input_write
-sleep 20
+sleep 10
 @ RAM_dump

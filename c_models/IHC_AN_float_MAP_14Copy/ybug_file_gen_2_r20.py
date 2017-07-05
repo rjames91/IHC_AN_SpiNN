@@ -23,9 +23,9 @@ def input_gen(chips=1,segments=1,cores=16):
 		for k in range(chips):
 			f.write("sp {}\n".format(chip_list[k]))
 			for i in range(cores):
-				#line="sload ./load_files/load{}_{} {}\n".format((cores*k)+i+1,j+1,address_in[i])
+				line="sload ./load_files/load{}_{} {}\n".format((cores*k)+i+1,j+1,address_in[i])
 				#single channel hack
-				line="sload ./load_files/load{}_{} {}\n".format(1,j+1,address_in[i])
+				#line="sload ./load_files/load{}_{} {}\n".format(1,j+1,address_in[i])
 				f.write(line)
 		if j==0:	
 			f.write("app_sig all 20 sync0\n")
@@ -71,6 +71,6 @@ def test_script_gen(segments,chips=1,dur=7,boot_string="boot",cores=16,segment_l
 	f.write("@ RAM_dump\n")
 
 
-test_script_gen(segments=240,chips=32,dur=10,boot_string="boot scamp.boot no_wdog.conf",cores=16,segment_length=100//20,num_fibres=2,app_no=20)
+test_script_gen(segments=240,chips=1,dur=10,boot_string="boot scamp.boot no_wdog.conf",cores=16,segment_length=100//20,num_fibres=2,app_no=20)
 
 

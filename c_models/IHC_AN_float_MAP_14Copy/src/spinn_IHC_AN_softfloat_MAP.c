@@ -18,7 +18,7 @@
 #include "random.h"
 #include "stdfix-exp.h"
 
-#define TIMER_TICK_PERIOD 23000//REALTIME (23ms to process 100 44100Hz samples TODO: make this dependent on numfibres
+#define TIMER_TICK_PERIOD 2300//REALTIME (2.3ms to process 100 44100Hz samples TODO: make this dependent on numfibres
 #define TOTAL_TICKS 240//173//197       
 #define PROFILE
 //#define LOOP_PROFILE
@@ -67,8 +67,8 @@ IHC_synParams Synapse;
 
 startupVars startupValues;
 //recurring values
-//REAL IHCVnow;
-long fract IHCVnow;
+REAL past_ciliaDisp;
+REAL IHCVnow;
 REAL mICaCurr;
 REAL CaCurr[NUMFIBRES];
 REAL ANCleft[NUMFIBRES];
@@ -281,6 +281,9 @@ void app_init(void)
 
 	//initialise cilia
 	Cilia.tc= REAL_CONST(0.00012);
+	Cilia.filter_b1= REAL_CONST(1.0);
+	Cilia.filter_b2= dt/Cilia.tc -	REAL_CONST(1.0);
+	Cilia.filter_a1= dt/Cilia.tc;
 	Cilia.C=REAL_CONST(0.08);
 	Cilia.u0=REAL_CONST(5e-9);
 	Cilia.recips0=REAL_CONST(1.)/REAL_CONST(3e-8);
@@ -295,6 +298,7 @@ void app_init(void)
 	Cilia.Rpc=REAL_CONST(0.04);
 	
 	//==========Recurring Values=================//
+	past_ciliaDisp=0.0;
 	IHCVnow=startupValues.IHCVnow0;
 	mICaCurr=startupValues.mICaCurr0;;
 	for(uint i=0;i<NUMLSR;i++)
@@ -465,6 +469,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 	//REAL ex1;
 	//REAL ex2;
 	
+	REAL cilia_disp;
 	REAL Guconv;
 	REAL mICaINF;
 	REAL micapowconv;
@@ -493,17 +498,20 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 	io_printf (IO_BUF, "[core %d] segment %d (offset=%d) starting processing\n", coreID,seg_index,segment_offset);
 #endif
 	for(i=0;i<SEGSIZE;i++)
-	{	
-		  
+	{			  
 	/*		if(i==0)
 			{
 			#ifdef PROFILE
 			  start_count_process = tc[T2_COUNT];
 			#endif
 			}*/
-		
+		//=======Viscous coupling HPF========//
+		cilia_disp= Cilia.filter_b1 * in_buffer[i] + Cilia.filter_b2 * past_ciliaDisp 
+				- Cilia.filter_a1 * past_ciliaDisp;
+		past_ciliaDisp=cilia_disp;
+			
 		//===========Apply Scaler============//
-  	  	utconv=in_buffer[i] * Cilia.C;
+  	  	utconv=cilia_disp * Cilia.C;
   	  	
 		//=========Apical Conductance========//	
 

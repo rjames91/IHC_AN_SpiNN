@@ -109,9 +109,9 @@ startupVars generateStartupVars(void)
 	gmaxcamsr=14e-9;
 	gmaxcahsr=14e-9;
 	eca=0.066;
-	taucalsr=30e-6;
+	taucalsr=140e-6;//30e-6;
 	taucamsr=0;
-	taucahsr=80e-6;
+	taucahsr=450e-6;//80e-6;
 	CaCurrLSR=((gmaxcalsr*pow(mICaCurr,3))*(IHCV-eca))*taucalsr;
 	CaCurrMSR=((gmaxcamsr*pow(mICaCurr,3))*(IHCV-eca))*taucamsr;
 	CaCurrHSR=((gmaxcahsr*pow(mICaCurr,3))*(IHCV-eca))*taucahsr;
@@ -284,16 +284,16 @@ void app_init(void)
 	Cilia.filter_b1= REAL_CONST(1.0);
 	Cilia.filter_b2= dt/Cilia.tc -	REAL_CONST(1.0);
 	Cilia.filter_a1= dt/Cilia.tc;
-	Cilia.C=REAL_CONST(0.08);
-	Cilia.u0=REAL_CONST(5e-9);
-	Cilia.recips0=REAL_CONST(1.)/REAL_CONST(3e-8);
+	Cilia.C=REAL_CONST(0.3);//REAL_CONST(0.08);
+	Cilia.u0=REAL_CONST(0.3e-9);//REAL_CONST(5e-9);
+	Cilia.recips0=REAL_CONST(1.)/REAL_CONST(6e-9);//REAL_CONST(1.)/REAL_CONST(3e-8);
 	Cilia.u1=REAL_CONST(1e-9);
 	Cilia.recips1=REAL_CONST(1.)/REAL_CONST(1e-9);
 	Cilia.Gmax=REAL_CONST(6e-9);
-	Cilia.Ga=REAL_CONST(8e-10);
-	Cilia.dtCap=(dt/4e-12);
+	Cilia.Ga=REAL_CONST(0.1e-9);//REAL_CONST(8e-10);
+	Cilia.dtCap=(dt/5e-12);//(dt/4e-12);
 	Cilia.Et=REAL_CONST(0.1);
-	Cilia.Gk=REAL_CONST(2e-8);
+	Cilia.Gk=REAL_CONST(2.1e-8);//REAL_CONST(2e-8);
 	Cilia.Ek=REAL_CONST(-0.08);
 	Cilia.Rpc=REAL_CONST(0.04);
 	
@@ -308,9 +308,9 @@ void app_init(void)
 		ANAvail[i]=startupValues.ANAvailLSR0;
 		ANRepro[i]=startupValues.ANReproLSR0;
 		refrac[i]=0;
-		preSyn.GmaxCa[i]=14e-9;
-		preSyn.recTauCa[i]=1./30e-6;
-		Synapse.M[i]=REAL_CONST(12.);
+		preSyn.GmaxCa[i]=20e-9;//14e-9;
+		preSyn.recTauCa[i]=1./140e-6;;//1./30e-6;
+		Synapse.M[i]=REAL_CONST(4.);//REAL_CONST(12.);
 	}
 	for(uint i=0;i<NUMMSR;i++)
 	{
@@ -319,9 +319,9 @@ void app_init(void)
 		ANAvail[i+NUMLSR]=startupValues.ANAvailMSR0;
 		ANRepro[i+NUMLSR]=startupValues.ANReproMSR0;
 		refrac[i+NUMLSR]=0;
-		preSyn.GmaxCa[i+NUMLSR]=14e-9;
+		preSyn.GmaxCa[i+NUMLSR]=20e-9;//14e-9;
 		preSyn.recTauCa[i+NUMLSR]=0;
-		Synapse.M[i+NUMLSR]=REAL_CONST(12.);
+		Synapse.M[i+NUMLSR]=REAL_CONST(4.);//REAL_CONST(12.);
 	}
 	for(uint i=0;i<NUMHSR;i++) 
 	{
@@ -330,30 +330,30 @@ void app_init(void)
 		ANAvail[i+NUMLSR+NUMMSR]=startupValues.ANAvailHSR0;
 		ANRepro[i+NUMLSR+NUMMSR]=startupValues.ANReproHSR0;
 		refrac[i+NUMLSR+NUMMSR]=0;
-		preSyn.GmaxCa[i+NUMLSR+NUMMSR]=14e-9;
-		preSyn.recTauCa[i+NUMLSR+NUMMSR]=1./80e-6;
-		Synapse.M[i+NUMLSR+NUMMSR]=REAL_CONST(12.);
+		preSyn.GmaxCa[i+NUMLSR+NUMMSR]=20e-9;//14e-9;
+		preSyn.recTauCa[i+NUMLSR+NUMMSR]=1./450e-6;//1./80e-6;
+		Synapse.M[i+NUMLSR+NUMMSR]=REAL_CONST(4.);//REAL_CONST(12.);
 	}
 	
 	//=========initialise the pre synapse params========//
-	preSyn.recipBeta=2.5e-3;
+	preSyn.recipBeta=(1./400.0);//2.5e-3;
 	preSyn.gamma=REAL_CONST(100.);
 	preSyn.dtTauM=(dt/5e-5);
 	//preSyn.dtTauCa=(dt/1e-4);
 	preSyn.Eca=0.066;
 	preSyn.power=REAL_CONST(3.);
-	preSyn.z=1.4142e21;//sqrt of 2e42 to fit as single float type (then multiplied twice)
+	preSyn.z=40e12;//1.4142e21;//sqrt of 2e42 to fit as single float type (then multiplied twice)
 
 	//=======initialise the synapse params=======//
 
-	Synapse.ldt=REAL_CONST(250.)*dt_spikes;
-	Synapse.ydt=REAL_CONST(6.)*dt_spikes;
+	Synapse.ldt=REAL_CONST(5.)*dt_spikes;
+	Synapse.ydt=REAL_CONST(66.)*dt_spikes;
 	if(Synapse.ydt>REAL_CONST(1.))
 	{
 		Synapse.ydt=REAL_CONST(1.);
 	}
-	Synapse.xdt=REAL_CONST(60.)*dt_spikes;
-	Synapse.rdt=REAL_CONST(500.)*dt_spikes;
+	Synapse.xdt=REAL_CONST(10.)*dt_spikes;
+	Synapse.rdt=REAL_CONST(2.)*dt_spikes;
 	Synapse.refrac_period=((7.5e-4)/dt_spikes);
 
 	
@@ -463,13 +463,15 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 	uint segment_offset=NUMFIBRES*spike_seg_size*(seg_index-1);
 	uint i,j,k;
 	
+	REAL term_1;
+	REAL term_2;
+	REAL term_3;
+	REAL cilia_disp;
 	REAL utconv;
 	accum ex1;
 	accum ex2;
 	//REAL ex1;
 	//REAL ex2;
-	
-	REAL cilia_disp;
 	REAL Guconv;
 	REAL mICaINF;
 	REAL micapowconv;
@@ -506,12 +508,17 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 			#endif
 			}*/
 		//=======Viscous coupling HPF========//
+		/*term_1=Cilia.filter_b1 * in_buffer[i];
+		term_2=Cilia.filter_b2 * past_ciliaDisp;
+		term_3=Cilia.filter_a1 * past_ciliaDisp;
+		cilia_disp=term_1+term_2-term_3;*/
 		cilia_disp= Cilia.filter_b1 * in_buffer[i] + Cilia.filter_b2 * past_ciliaDisp 
 				- Cilia.filter_a1 * past_ciliaDisp;
-		past_ciliaDisp=cilia_disp;
+
+		past_ciliaDisp=cilia_disp * Cilia.C;
 			
 		//===========Apply Scaler============//
-  	  	utconv=cilia_disp * Cilia.C;
+  	  	utconv=past_ciliaDisp;
   	  	
 		//=========Apical Conductance========//	
 
@@ -584,7 +591,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 
 			if(i%resamp_fac==0)
 			{	
-				//=====Vesicle Release Rate=====//
+			/*	//=====Vesicle Release Rate MAP_14=====//
 				//CaCurr_pow=pos_CaCurr;
 				CaCurr_pow=pos_CaCurr*preSyn.z;//first sqrt(z) multiply to prevent underflow CaCurr_pow
 				for(k=0;k<(uint)preSyn.power-1;k++)
@@ -594,6 +601,20 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 				//compare=max((preSyn.z*CaCurr_pow-preSyn.CaTh[j]),REAL_CONST(0.));				
 				vrr = preSyn.z*CaCurr_pow;//second sqrt(z) multiply
 				//vrr=compare*preSyn.z;
+				//saturate vrr
+				/*if(vrr>max_rate)
+				{
+					vrr=max_rate;
+				}*/
+
+				//=====Vesicle Release Rate MAP_BS=====//
+				//CaCurr_pow=pos_CaCurr;
+				CaCurr_pow=pos_CaCurr*preSyn.z;
+				for(k=0;k<(uint)preSyn.power-1;k++)
+				{			
+					CaCurr_pow=CaCurr_pow*pos_CaCurr*preSyn.z;
+				}
+				vrr = CaCurr_pow;
 				//saturate vrr
 				/*if(vrr>max_rate)
 				{
@@ -711,7 +732,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 				
 				//=======write value to SDRAM========//
 				//out_buffer[(j*SEGSIZE)+i]  = ANReproLSR[j];//ANAvailLSR[j];//vrrlsr;// compare;//CaCurr_pow;//
-				out_buffer[(j*spike_seg_size)+(si-1)]  = spikes;//releaseProb;//pos_CaCurr;//ICa;//in_buffer[i];//
+				out_buffer[(j*spike_seg_size)+(si-1)]  =spikes;//utconv;//cilia_disp;//utconv;// releaseProb;//pos_CaCurr;//ICa;//in_buffer[i];//
 				
 				//io_printf (IO_BUF, "[core %d] index=%d\n", coreID,(j*spike_seg_size)+(si-1));
 			}

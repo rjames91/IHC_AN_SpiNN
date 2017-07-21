@@ -19,6 +19,8 @@
 #include "stdfix-exp.h"
 #include "log.h"
 #include <data_specification.h>
+#include <recording.h>
+
 
 #define TIMER_TICK_PERIOD 3600//2300//REALTIME (2.3ms to process 100 44100Hz samples TODO: make this dependent on numfibres
 #define TOTAL_TICKS 100//240//173//197
@@ -41,6 +43,7 @@ uint index_y;
 REAL r_max_recip;
 REAL dt_spikes;
 uint spike_seg_size;
+uint seg_output_n_bytes;
 SEED_TYPE local_seed;
 
 //uint seed_selection[SEED_SEL_SIZE];//TODO:this needs to be moved to SDRAM
@@ -204,9 +207,17 @@ void app_init(void)
 	io_printf (IO_BUF, "[core %d] starting simulation\n", coreID);
 
 
-	    //obtain data spec
+	//obtain data spec
 	address_t data_address = data_specification_get_data_address();
+    //get parameters
     address_t params = data_specification_get_region(0, data_address);
+    //get recording region
+    address_t recording_address = data_specification_get_region(1, data_address);
+    // Setup recording
+    uint32_t recording_flags = 0;
+    if (!recording_initialize(recording_address, &recording_flags)) {
+        rt_error(RTE_SWERR);
+    }
 
     // Get the size of the data in words
     data_size = params[DATA_SIZE];
@@ -218,19 +229,24 @@ void app_init(void)
     sampling_freq = params[FS];
 
     log_info("IHCAN key=%d\n",drnl_key);
+    log_info("data_size=%d\n",data_size);
 
     Fs=(REAL)sampling_freq;
 	dt=(1.0/Fs);
 	spike_seg_size=SEGSIZE/resamp_fac;
+	seg_output_n_bytes= NUMFIBRES * spike_seg_size * sizeof(REAL);
+    log_info("seg output (in bytes)=%d\n",seg_output_n_bytes);
+
+
 	max_rate=Fs/(REAL)resamp_fac;
 	dt_spikes=(REAL)resamp_fac*dt;
 	// Allocate buffers somewhere in SDRAM
 	
 	//output results buffer, AN fibre outputs
-	sdramout_buffer = (REAL *) sark_xalloc (sv->sdram_heap,
+	/*sdramout_buffer = (REAL *) sark_xalloc (sv->sdram_heap,
 					 data_size/resamp_fac * sizeof(REAL),
-					 coreID,
-					 ALLOC_LOCK);	
+					 placement_coreID,
+					 ALLOC_LOCK);*/
 
 	/*sdramin_buffer = (REAL *) sark_xalloc (sv->sdram_heap,
 					data_size *sizeof(REAL),
@@ -251,7 +267,7 @@ void app_init(void)
 	dtcm_profile_buffer = (REAL *) sark_alloc (3*TOTAL_TICKS, sizeof(REAL));
 	
 	if (dtcm_buffer_a == NULL ||dtcm_buffer_b == NULL ||dtcm_buffer_x == NULL ||dtcm_buffer_y == NULL 
-			||  sdramout_buffer == NULL || dtcm_profile_buffer == NULL)
+			||  dtcm_profile_buffer == NULL)
 	/*if (sdramout_buffer == NULL || sdramin_buffer == NULL || dtcm_buffer_y == NULL 
 			|| dtcm_buffer_a == NULL || dtcm_buffer_b == NULL || dtcm_profile_buffer == NULL ||dtcm_buffer_x == NULL)*/
 	{
@@ -275,7 +291,7 @@ void app_init(void)
 	
 		for (uint i=0;i<data_size/resamp_fac;i++)
 		{
-			sdramout_buffer[i]  = 0;
+		//	sdramout_buffer[i]  = 0;
 		}
 
 		for (uint i=0;i<3 * TOTAL_TICKS;i++)
@@ -286,11 +302,11 @@ void app_init(void)
 		
 		io_printf (IO_BUF, "[core %d] dtcm buffer a @ 0x%08x\n", coreID,
 				   (uint) dtcm_buffer_a);
-		io_printf (IO_BUF, "[core %d] sdram out buffer @ 0x%08x\n", coreID,
+		/*io_printf (IO_BUF, "[core %d] sdram out buffer @ 0x%08x\n", coreID,
 				   (uint) sdramout_buffer);
 		io_printf (IO_BUF, "[core %d] sdram in buffer @ 0x%08x\n", coreID,
 				   (uint) sdramin_buffer);	
-		/*io_printf (IO_BUF, "[core %d] profile buffer @ 0x%08x\n", coreID,
+		io_printf (IO_BUF, "[core %d] profile buffer @ 0x%08x\n", coreID,
 				   (uint) profile_buffer);	*/
 	}
 	
@@ -410,6 +426,7 @@ void app_init(void)
 void app_end(uint null_a,uint null_b)
 {
 
+    recording_finalise();
     io_printf (IO_BUF, "spinn_exit %d\n",seg_index);
     spin1_exit (0);
 
@@ -426,27 +443,31 @@ void data_write(uint null_a, uint null_b)
 		{
 			out_index=index_x;
 			dtcm_buffer_out=dtcm_buffer_x;
-#ifdef PRINT	
-			io_printf (IO_BUF, "buff_x write\n");
-#endif
+            #ifdef PRINT
+                        io_printf (IO_BUF, "buff_x write\n");
+            #endif
 		}
 		else
 		{
 			out_index=index_y;
 			dtcm_buffer_out=dtcm_buffer_y;
-#ifdef PRINT
-			io_printf (IO_BUF, "buff_y write\n");
-#endif
+            #ifdef PRINT
+                        io_printf (IO_BUF, "buff_y write\n");
+            #endif
 		}
-#ifdef PROFILE
-  start_count_write = tc[T2_COUNT];
-#endif
-		spin1_dma_transfer(DMA_WRITE,&sdramout_buffer[out_index],dtcm_buffer_out,DMA_WRITE,
-		  						NUMFIBRES*SEGSIZE*sizeof(REAL));
-#ifdef PRINT
-		io_printf (IO_BUF, "[core %d] segment %d written to @ 0x%08x - 0x%08x\n", coreID,seg_index,
-							  (uint) &sdramout_buffer[out_index],(uint) &sdramout_buffer[out_index+(NUMFIBRES-1)*SEGSIZE+SEGSIZE-1]);
-#endif
+        #ifdef PROFILE
+          start_count_write = tc[T2_COUNT];
+        #endif
+
+		//spin1_dma_transfer(DMA_WRITE,&sdramout_buffer[out_index],dtcm_buffer_out,DMA_WRITE,
+		//  						NUMFIBRES*SEGSIZE*sizeof(REAL));
+
+        recording_record(0, dtcm_buffer_out, seg_output_n_bytes);//TODO: check what the channel argument in this function does
+
+        #ifdef PRINT
+                io_printf (IO_BUF, "[core %d] segment %d written to @ 0x%08x - 0x%08x\n", coreID,seg_index,
+                                      (uint) &sdramout_buffer[out_index],(uint) &sdramout_buffer[out_index+(NUMFIBRES-1)*SEGSIZE+SEGSIZE-1]);
+        #endif
 	}
 }
 
@@ -807,7 +828,6 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 				//=======write value to SDRAM========//
 				//out_buffer[(j*SEGSIZE)+i]  = ANReproLSR[j];//ANAvailLSR[j];//vrrlsr;// compare;//CaCurr_pow;//
 				out_buffer[(j*spike_seg_size)+(si-1)]  =vrr;//spikes;//utconv;//cilia_disp;//utconv;// releaseProb;//pos_CaCurr;//ICa;//in_buffer[i];//
-				
 				//io_printf (IO_BUF, "[core %d] index=%d\n", coreID,(j*spike_seg_size)+(si-1));
 			}
 			
@@ -889,15 +909,16 @@ io_printf (IO_BUF, "buff_a-->buff_y\n");
 		
 		spin1_trigger_user_event(NULL,NULL);
 	}
+
 	else if (ttag==DMA_WRITE)
 	{
-#ifdef PROFILE
-  end_count_write = tc[T2_COUNT];
-  dtcm_profile_buffer[2+((seg_index-1)*3)]=start_count_write-end_count_write;
-#ifdef PRINT 
-  io_printf (IO_BUF, "write complete in %d ticks\n",start_count_write-end_count_write);
-#endif
-#endif
+        #ifdef PROFILE
+          end_count_write = tc[T2_COUNT];
+          dtcm_profile_buffer[2+((seg_index-1)*3)]=start_count_write-end_count_write;
+        #ifdef PRINT
+          io_printf (IO_BUF, "write complete in %d ticks\n",start_count_write-end_count_write);
+        #endif
+        #endif
 		//flip write buffers
 		write_switch=!write_switch;
 	}

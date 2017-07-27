@@ -35,6 +35,11 @@ uint coreID;
 uint chipID;
 uint test_DMA;
 uint seg_index;
+//add circular input buffer
+uint cbuff_index;
+uint cbuff_numseg;
+
+
 uint read_switch;
 uint write_switch;
 uint processing;
@@ -197,6 +202,8 @@ void app_init(void)
 	max_rate=Fs/(REAL)resamp_fac;
 	dt_spikes=(REAL)resamp_fac*dt;*/
 	seg_index=0;
+	cbuff_index=0;
+	cbuff_numseg=3;
 	read_switch=0;
 	write_switch=0;
 	r_max_recip=REAL_CONST(1.)/(REAL)RDM_MAX;
@@ -460,11 +467,18 @@ void data_write(uint null_a, uint null_b)
         #endif
 
 		//spin1_dma_transfer(DMA_WRITE,&sdramout_buffer[out_index],dtcm_buffer_out,DMA_WRITE,
-		//  						NUMFIBRES*SEGSIZE*sizeof(REAL));
+		//  						NUMFIBRES*spike_seg_size*sizeof(REAL));
 
-        recording_record(0, dtcm_buffer_out, seg_output_n_bytes);//TODO: check what the channel argument in this function does
 
-        #ifdef PRINT
+        recording_record(0, dtcm_buffer_out, seg_output_n_bytes);
+
+        log_info("[core %d] recording segment %d written from 0x%08x\n", coreID,seg_index,
+                      (uint) dtcm_buffer_out);
+
+        //flip write buffers //N.B only do this here when using recording
+		write_switch=!write_switch;
+
+ #ifdef PRINT
                 io_printf (IO_BUF, "[core %d] segment %d written to @ 0x%08x - 0x%08x\n", coreID,seg_index,
                                       (uint) &sdramout_buffer[out_index],(uint) &sdramout_buffer[out_index+(NUMFIBRES-1)*SEGSIZE+SEGSIZE-1]);
         #endif
@@ -532,9 +546,14 @@ void data_read(uint ticks, uint payload)
             }
 
             #ifdef PRINT
-                    io_printf (IO_BUF, "[core %d] sdram DMA read @ 0x%08x (segment %d)\n", coreID,
-                                  (uint) &sdramin_buffer[(seg_index)*SEGSIZE],seg_index+1);
+                    log_info ("[core %d] sdram DMA read @ 0x%08x (segment %d)\n", coreID,
+                                  (uint) &sdramin_buffer[(cbuff_index)*SEGSIZE],seg_index+1);
+
+
+            log_info("cbuff_index=%d",cbuff_index);
             #endif
+            //spin1_dma_transfer(DMA_READ,&sdramin_buffer[cbuff_index*SEGSIZE], dtcm_buffer_in, DMA_READ,
+             //       SEGSIZE*sizeof(REAL));
 
             spin1_dma_transfer(DMA_READ,&sdramin_buffer[seg_index*SEGSIZE], dtcm_buffer_in, DMA_READ,
                    SEGSIZE*sizeof(REAL));
@@ -827,6 +846,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 				
 				//=======write value to SDRAM========//
 				//out_buffer[(j*SEGSIZE)+i]  = ANReproLSR[j];//ANAvailLSR[j];//vrrlsr;// compare;//CaCurr_pow;//
+				//if(vrr!=0.0) log_info("non-zero vrr\n");
 				out_buffer[(j*spike_seg_size)+(si-1)]  =vrr;//spikes;//utconv;//cilia_disp;//utconv;// releaseProb;//pos_CaCurr;//ICa;//in_buffer[i];//
 				//io_printf (IO_BUF, "[core %d] index=%d\n", coreID,(j*spike_seg_size)+(si-1));
 			}
@@ -863,6 +883,16 @@ void transfer_handler(uint tid, uint ttag)
 #endif
 		//increment segment index
 		seg_index++;
+
+	    //check circular buffer
+		if(cbuff_index<cbuff_numseg-1)
+		{    //increment circular buffer index
+		    cbuff_index++;
+		}
+		else
+		{
+		    cbuff_index=0;
+		}
 		
 		#ifdef PROFILE
 		  start_count_process = tc[T2_COUNT];

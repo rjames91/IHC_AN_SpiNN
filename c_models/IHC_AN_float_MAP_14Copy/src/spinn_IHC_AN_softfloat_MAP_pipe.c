@@ -95,14 +95,14 @@ startupVars generateStartupVars(void)
 
 	//======Calculate Gu0===========//
 	gmax=6e-9;
-	u0=5e-9;
+	u0=0.3e-9;
 	u1=1e-9;
 	s1=1e-9;
-	s0=3e-8;
-	ga=8e-10;
+	s0=6e-9;
+	ga=1e-10;
 	Gu0=ga+gmax/(1+(exp(u0/s0)*(1+exp(u1/s1))));
 	//======Calculate IHCVnow=========//
-	gk=2e-8;
+	gk=2.1e-8;
 	et=0.1;
 	ek=-0.08;
 	rpc=0.04;
@@ -115,27 +115,27 @@ startupVars generateStartupVars(void)
 	mICaCurr=1./(1.+exp(-gamma*IHCV)*(1./beta));
 
 	//=======Calculate CaCurrent========//
-	gmaxcalsr=14e-9;
-	gmaxcamsr=14e-9;
-	gmaxcahsr=14e-9;
+	gmaxcalsr=20e-9;
+	gmaxcamsr=20e-9;
+	gmaxcahsr=20e-9;
 	eca=0.066;
-	taucalsr=140e-6;//30e-6;
+	taucalsr=200e-6;//30e-6;
 	taucamsr=0;
-	taucahsr=450e-6;//80e-6;
+	taucahsr=500e-6;//80e-6;
 	CaCurrLSR=((gmaxcalsr*pow(mICaCurr,3))*(IHCV-eca))*taucalsr;
 	CaCurrMSR=((gmaxcamsr*pow(mICaCurr,3))*(IHCV-eca))*taucamsr;
 	CaCurrHSR=((gmaxcahsr*pow(mICaCurr,3))*(IHCV-eca))*taucahsr;
 
 	//========Calculate AN==========//
-	z=1.4142e21;//sqrt of 2e42 to fit as single float type (then multiplied twice)
+	z=40e12;
 	power=3;
-	y=6;
-	x=60;
-	MLSR=12;
-	MMSR=12;
-	MHSR=12;
-	l=250;
-	r=500;
+	y=15;//66;
+	x=300;//10;
+	MLSR=4;
+	MMSR=4;
+	MHSR=4;
+	l=150;//5;
+	r=300;//2;
 
 	kt0LSR=-z*pow(CaCurrLSR,power)*z;//added *z for single float z
 	kt0MSR=-z*pow(CaCurrMSR,power)*z;
@@ -411,14 +411,14 @@ void app_init(void)
 
 	//=======initialise the synapse params=======//
 
-	Synapse.ldt=REAL_CONST(5.)*dt_spikes;
-	Synapse.ydt=REAL_CONST(66.)*dt_spikes;
+	Synapse.ldt=REAL_CONST(150.)*dt_spikes;//REAL_CONST(5.)*dt_spikes;
+	Synapse.ydt=REAL_CONST(15.)*dt_spikes;//REAL_CONST(66.)*dt_spikes;
 	if(Synapse.ydt>REAL_CONST(1.))
 	{
 		Synapse.ydt=REAL_CONST(1.);
 	}
-	Synapse.xdt=REAL_CONST(10.)*dt_spikes;
-	Synapse.rdt=REAL_CONST(2.)*dt_spikes;
+	Synapse.xdt=REAL_CONST(300.)*dt_spikes;//REAL_CONST(10.)*dt_spikes;
+	Synapse.rdt=REAL_CONST(300.)*dt_spikes;//REAL_CONST(2.)*dt_spikes;
 	Synapse.refrac_period=((7.5e-4)/dt_spikes);
 
 	
@@ -433,12 +433,27 @@ void app_init(void)
 void app_end(uint null_a,uint null_b)
 {
 
+    log_info("sending final ack packet and ending application\n");
+    //send final ack to parent DRNL
+    while (!spin1_send_mc_packet(drnl_key, 2, WITH_PAYLOAD)) {
+        spin1_delay_us(1);
+    }
+
     recording_finalise();
     io_printf (IO_BUF, "spinn_exit %d\n",seg_index);
     spin1_exit (0);
 
 }
 
+recording_complete_callback_t record_finished(void)
+{
+
+        log_info("record finished %d",seg_index);
+        //flip write buffers //N.B only do this here when using recording
+		write_switch=!write_switch;
+}
+
+//Currently never called //TODO: remove if 'record every sample' approach is fast enough
 void data_write(uint null_a, uint null_b)
 {
 	REAL *dtcm_buffer_out;
@@ -466,20 +481,23 @@ void data_write(uint null_a, uint null_b)
           start_count_write = tc[T2_COUNT];
         #endif
 
-		//spin1_dma_transfer(DMA_WRITE,&sdramout_buffer[out_index],dtcm_buffer_out,DMA_WRITE,
-		//  						NUMFIBRES*spike_seg_size*sizeof(REAL));
-
-
+		/*spin1_dma_transfer(DMA_WRITE,&sdramout_buffer[out_index],dtcm_buffer_out,DMA_WRITE,
+		  						NUMFIBRES*spike_seg_size*sizeof(REAL));
+        */
+        /*while (recording_record(0, dtcm_buffer_out, seg_output_n_bytes))
+        {
+            spin1_delay_us(1);
+        }*/
         recording_record(0, dtcm_buffer_out, seg_output_n_bytes);
-
-        log_info("[core %d] recording segment %d written from 0x%08x\n", coreID,seg_index,
-                      (uint) dtcm_buffer_out);
+        /*recording_record_and_notify(0, dtcm_buffer_out, seg_output_n_bytes,record_finished);
+        log_info("[core %d] recording segment %d written from 0x%08x first val=%d\n", coreID,seg_index,
+                     (uint) dtcm_buffer_out,(uint)dtcm_buffer_out[0]);*/
 
         //flip write buffers //N.B only do this here when using recording
 		write_switch=!write_switch;
 
- #ifdef PRINT
-                io_printf (IO_BUF, "[core %d] segment %d written to @ 0x%08x - 0x%08x\n", coreID,seg_index,
+        #ifdef PRINT
+        io_printf (IO_BUF, "[core %d] segment %d written to @ 0x%08x - 0x%08x\n", coreID,seg_index,
                                       (uint) &sdramout_buffer[out_index],(uint) &sdramout_buffer[out_index+(NUMFIBRES-1)*SEGSIZE+SEGSIZE-1]);
         #endif
 	}
@@ -488,7 +506,6 @@ void data_write(uint null_a, uint null_b)
 //DMA read
 void data_read(uint ticks, uint payload)
 {
-
    // log_info("mcpacket recieved %d\n",seg_index);
 
     if (payload==1)
@@ -513,17 +530,26 @@ void data_read(uint ticks, uint payload)
                 spin1_schedule_callback(app_end,NULL,NULL,2);
                 return;
             }
-        }
 
-        //now input buffer is allocated send acknowledgement back to parent DRNL
-        while (!spin1_send_mc_packet(drnl_key, 2, WITH_PAYLOAD))
-        {
-            spin1_delay_us(1);
+            else
+            {
+                log_info("sending ack packet");
+                //now input buffer is allocated send acknowledgement back to parent DRNL
+                while (!spin1_send_mc_packet(drnl_key, 2, WITH_PAYLOAD))
+                {
+                    spin1_delay_us(1);
+                }
+            }
         }
     }
 
     else //payload is 0 therefore next segment in input buffer memory is ready
     {
+        //measure time between each call of this function (should approximate the global clock)
+        end_count_read = tc[T2_COUNT];
+
+      //  log_info("time since last data read packet=%d",start_count_read-end_count_read);
+
         #ifdef PROFILE
           start_count_read = tc[T2_COUNT];
         #endif
@@ -552,11 +578,11 @@ void data_read(uint ticks, uint payload)
 
             log_info("cbuff_index=%d",cbuff_index);
             #endif
-            //spin1_dma_transfer(DMA_READ,&sdramin_buffer[cbuff_index*SEGSIZE], dtcm_buffer_in, DMA_READ,
-             //       SEGSIZE*sizeof(REAL));
-
-            spin1_dma_transfer(DMA_READ,&sdramin_buffer[seg_index*SEGSIZE], dtcm_buffer_in, DMA_READ,
+            spin1_dma_transfer(DMA_READ,&sdramin_buffer[cbuff_index*SEGSIZE], dtcm_buffer_in, DMA_READ,
                    SEGSIZE*sizeof(REAL));
+
+            //spin1_dma_transfer(DMA_READ,&sdramin_buffer[seg_index*SEGSIZE], dtcm_buffer_in, DMA_READ,
+            //       SEGSIZE*sizeof(REAL));
         }
 	}
 }
@@ -752,8 +778,6 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 	
 				Probability=REAL_CONST(1.)-releaseProb_pow;
 
-				//out_buffer[(j*spike_seg_size)+(si-1)]  = ANRepro[j];
-			
 				if (refrac[j]>0)
 				{
 					refrac[j]--;
@@ -847,7 +871,9 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 				//=======write value to SDRAM========//
 				//out_buffer[(j*SEGSIZE)+i]  = ANReproLSR[j];//ANAvailLSR[j];//vrrlsr;// compare;//CaCurr_pow;//
 				//if(vrr!=0.0) log_info("non-zero vrr\n");
-				out_buffer[(j*spike_seg_size)+(si-1)]  =vrr;//spikes;//utconv;//cilia_disp;//utconv;// releaseProb;//pos_CaCurr;//ICa;//in_buffer[i];//
+				//recording_record(0,&vrr,4);
+				//log_info("recorded %d\n",(uint)vrr);
+				out_buffer[(j*spike_seg_size)+(si-1)]  =spikes;//vrr;//utconv;//cilia_disp;//utconv;// releaseProb;//pos_CaCurr;//ICa;//in_buffer[i];//
 				//io_printf (IO_BUF, "[core %d] index=%d\n", coreID,(j*spike_seg_size)+(si-1));
 			}
 			
@@ -866,7 +892,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 	/*io_printf (IO_BUF, "[core %d] segment %d processed and written to @ 0x%08x - 0x%08x\n", coreID,seg_index,
 					  (uint) &sdramout_buffer[segment_offset],(uint) &sdramout_buffer[segment_offset+(NUMFIBRES-1)*SEGSIZE+SEGSIZE-1]);*/
 	io_printf (IO_BUF, "[core %d] segment %d processed\n",coreID,seg_index);
-#endif			
+#endif
 	return segment_offset;
 }
 
@@ -875,7 +901,7 @@ void transfer_handler(uint tid, uint ttag)
 	if (ttag==DMA_READ)
 	{
 #ifdef PROFILE
-  end_count_read = tc[T2_COUNT];
+  //end_count_read = tc[T2_COUNT];
   dtcm_profile_buffer[seg_index*3]=(REAL)(start_count_read-end_count_read);
 #ifdef PRINT
   io_printf (IO_BUF, "read complete in %d ticks\n",start_count_read-end_count_read);
@@ -901,40 +927,40 @@ void transfer_handler(uint tid, uint ttag)
 		//choose current buffers
 		if(!read_switch && !write_switch)
 		{
-#ifdef PRINT 
-io_printf (IO_BUF, "buff_b-->buff_x\n");
-#endif
+            #ifdef PRINT
+            io_printf (IO_BUF, "buff_b-->buff_x\n");
+            #endif
 			index_x=process_chan(dtcm_buffer_x,dtcm_buffer_b);
 		}
 		else if(!read_switch && write_switch)
 		{
-#ifdef PRINT
-io_printf (IO_BUF, "buff_b-->buff_y\n"); 
-#endif
+            #ifdef PRINT
+            io_printf (IO_BUF, "buff_b-->buff_y\n");
+            #endif
 			index_y=process_chan(dtcm_buffer_y,dtcm_buffer_b);
 		}
 		else if(read_switch && !write_switch)
 		{
-#ifdef PRINT
-io_printf (IO_BUF, "buff_a-->buff_x\n");
-#endif	
+            #ifdef PRINT
+            io_printf (IO_BUF, "buff_a-->buff_x\n");
+            #endif
 			index_x=process_chan(dtcm_buffer_x,dtcm_buffer_a);
 
 		}
 		else
 		{
-#ifdef PRINT
-io_printf (IO_BUF, "buff_a-->buff_y\n");
-#endif
+            #ifdef PRINT
+            io_printf (IO_BUF, "buff_a-->buff_y\n");
+            #endif
 			index_y=process_chan(dtcm_buffer_y,dtcm_buffer_a);
 		}		  
 			
 		#ifdef PROFILE
 			  end_count_process = tc[T2_COUNT];
 			  dtcm_profile_buffer[1+((seg_index-1)*3)]=start_count_process-end_count_process;
-		#ifdef PRINT 
+		#ifdef PRINT
 			io_printf (IO_BUF, "process complete in %d ticks (segment %d)\n",start_count_process-end_count_process,seg_index);
-		#endif	
+		#endif
 		#endif			
 		
 		spin1_trigger_user_event(NULL,NULL);
@@ -942,11 +968,12 @@ io_printf (IO_BUF, "buff_a-->buff_y\n");
 
 	else if (ttag==DMA_WRITE)
 	{
+	          io_printf (IO_BUF, "write complete in %d ticks\n",start_count_write-end_count_write);
+
         #ifdef PROFILE
           end_count_write = tc[T2_COUNT];
           dtcm_profile_buffer[2+((seg_index-1)*3)]=start_count_write-end_count_write;
         #ifdef PRINT
-          io_printf (IO_BUF, "write complete in %d ticks\n",start_count_write-end_count_write);
         #endif
         #endif
 		//flip write buffers

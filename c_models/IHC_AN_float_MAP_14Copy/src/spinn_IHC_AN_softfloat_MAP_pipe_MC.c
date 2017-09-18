@@ -88,7 +88,7 @@ REAL ANRepro[NUMFIBRES];
 startupVars generateStartupVars(void)
 {
 	startupVars out;
-	REAL Gu0,kt0,IHCV,gmax,u0,u1,s1,s0,ga,gk,et,ek,rpc,ekp,gamma,beta,mICaCurr,
+	REAL Gu0,kt0,IHCV,gmax,u0,u1,s1,s0,ga,gk,et,ek,rpc,ekp,gamma,beta,mICaCurr,mICaCurr_pow,
 	gmaxcalsr,gmaxcamsr,gmaxcahsr,eca,taucalsr,taucamsr,taucahsr,CaCurrLSR,CaCurrMSR,CaCurrHSR,kt0LSR,kt0MSR,kt0HSR,
 	ANCleftLSR,ANCleftMSR,ANCleftHSR,ANAvailLSR,ANAvailMSR,ANAvailHSR,ANReproLSR,ANReproMSR,
 	ANReproHSR,z,power,y,x,l,r,MLSR,MMSR,MHSR;
@@ -122,9 +122,14 @@ startupVars generateStartupVars(void)
 	taucalsr=200e-6;//30e-6;
 	taucamsr=0;
 	taucahsr=500e-6;//80e-6;
-	CaCurrLSR=((gmaxcalsr*pow(mICaCurr,3))*(IHCV-eca))*taucalsr;
-	CaCurrMSR=((gmaxcamsr*pow(mICaCurr,3))*(IHCV-eca))*taucamsr;
-	CaCurrHSR=((gmaxcahsr*pow(mICaCurr,3))*(IHCV-eca))*taucahsr;
+	mICaCurr_pow=mICaCurr;
+	for (int i=0;i<2;i++)
+	{
+	    mICaCurr_pow*=mICaCurr;
+	}
+	CaCurrLSR=((gmaxcalsr*mICaCurr_pow)*(IHCV-eca))*taucalsr;
+	CaCurrMSR=((gmaxcamsr*mICaCurr_pow)*(IHCV-eca))*taucamsr;
+	CaCurrHSR=((gmaxcahsr*mICaCurr_pow)*(IHCV-eca))*taucahsr;
 
 	//========Calculate AN==========//
 	z=40e12;
@@ -137,9 +142,9 @@ startupVars generateStartupVars(void)
 	l=150;//5;
 	r=300;//2;
 
-	kt0LSR=-z*pow(CaCurrLSR,power)*z;//added *z for single float z
-	kt0MSR=-z*pow(CaCurrMSR,power)*z;
-	kt0HSR=-z*pow(CaCurrHSR,power)*z;
+	kt0LSR=-z*pow(CaCurrLSR,power);//*z;//added *z for single float z
+	kt0MSR=-z*pow(CaCurrMSR,power);//*z;
+	kt0HSR=-z*pow(CaCurrHSR,power);//*z;
 	ANCleftLSR=(kt0LSR*y*MLSR)/(y*(l+r)+kt0LSR*l);
 	ANCleftMSR=(kt0MSR*y*MMSR)/(y*(l+r)+kt0MSR*l);
 	ANCleftHSR=(kt0HSR*y*MHSR)/(y*(l+r)+kt0HSR*l);
@@ -377,7 +382,7 @@ void app_init(void)
 		ANRepro[i]=startupValues.ANReproLSR0;
 		refrac[i]=0;
 		preSyn.GmaxCa[i]=20e-9;//14e-9;
-		preSyn.recTauCa[i]=1./140e-6;;//1./30e-6;
+		preSyn.recTauCa[i]=1./200e-6;;//1./30e-6;
 		Synapse.M[i]=REAL_CONST(4.);//REAL_CONST(12.);
 	}
 	for(uint i=0;i<NUMMSR;i++)
@@ -399,7 +404,7 @@ void app_init(void)
 		ANRepro[i+NUMLSR+NUMMSR]=startupValues.ANReproHSR0;
 		refrac[i+NUMLSR+NUMMSR]=0;
 		preSyn.GmaxCa[i+NUMLSR+NUMMSR]=20e-9;//14e-9;
-		preSyn.recTauCa[i+NUMLSR+NUMMSR]=1./450e-6;//1./80e-6;
+		preSyn.recTauCa[i+NUMLSR+NUMMSR]=1./500e-6;//1./80e-6;
 		Synapse.M[i+NUMLSR+NUMMSR]=REAL_CONST(4.);//REAL_CONST(12.);
 	}
 	
@@ -621,6 +626,8 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 	REAL mICaINF;
 	REAL micapowconv;
 	REAL ICa;
+	REAL sub1;
+	REAL sub2;
 	REAL pos_CaCurr;
 	REAL CaCurr_pow;
 	REAL releaseProb_pow;
@@ -726,7 +733,10 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 			//======Synaptic Ca========//
 			ICa=preSyn.GmaxCa[j]*micapowconv*(IHCVnow-preSyn.Eca);
 			//CaCurr[j]+=ICa*dt - (CaCurr[j]*dt)/preSyn.TauCa[j];
-			CaCurr[j]+=ICa*dt - (CaCurr[j]*dt)*preSyn.recTauCa[j];
+			sub1 = ICa*dt;
+			sub2 = (CaCurr[j]*dt)*preSyn.recTauCa[j];
+			//CaCurr[j]=CaCurr[j] + (ICa*dt) - ((CaCurr[j]*dt)*preSyn.recTauCa[j]);
+			CaCurr[j] += sub1 - sub2;
 			/*if(CaCurr[j]>REAL_CONST(0.))
 			{
 				CaCurr[j]=REAL_CONST(0.);
@@ -878,7 +888,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 				//if(vrr!=0.0) log_info("non-zero vrr\n");
 				//recording_record(0,&vrr,4);
 				//log_info("recorded %d\n",(uint)vrr);
-				out_buffer[(j*spike_seg_size)+(si-1)]  =spikes;//vrr;//utconv;//cilia_disp;//utconv;// releaseProb;//pos_CaCurr;//ICa;//in_buffer[i];//
+				out_buffer[(j*spike_seg_size)+(si-1)] = spikes;//vrr;//preSyn.recTauCa[j];//CaCurr[j];//micapowconv;// startupValues.CaCurrLSR0;//in_buffer[i];//utconv;//cilia_disp;//utconv;// releaseProb;//pos_CaCurr;//ICa;//in_buffer[i];//
 				//io_printf (IO_BUF, "[core %d] index=%d\n", coreID,(j*spike_seg_size)+(si-1));
 			}
 			

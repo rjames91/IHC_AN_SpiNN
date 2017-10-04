@@ -4,6 +4,7 @@
     <content url="file://$MODULE_DIR$">
       <excludeFolder url="file://$MODULE_DIR$/.metadata" />
       <excludeFolder url="file://$MODULE_DIR$/RemoteSystemsTempFiles" />
+      <excludeFolder url="file://$MODULE_DIR$/application_generated_data_files" />
       <excludeFolder url="file://$MODULE_DIR$/c_models/AN_LSR_float" />
       <excludeFolder url="file://$MODULE_DIR$/c_models/IHC_AN_HSR_float" />
       <excludeFolder url="file://$MODULE_DIR$/c_models/IHC_AN_LSR_float" />
@@ -20,6 +21,8 @@
       <excludeFolder url="file://$MODULE_DIR$/c_models/IHC_AN_multitypes" />
       <excludeFolder url="file://$MODULE_DIR$/c_models/IHC_float" />
       <excludeFolder url="file://$MODULE_DIR$/c_models/model_binaries" />
+      <excludeFolder url="file://$MODULE_DIR$/model_binaries" />
+      <excludeFolder url="file://$MODULE_DIR$/reports" />
     </content>
     <orderEntry type="jdk" jdkName="Python 2.7.12 (/usr/bin/python2.7)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />

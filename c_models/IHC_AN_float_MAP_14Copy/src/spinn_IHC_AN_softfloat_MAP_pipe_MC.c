@@ -182,7 +182,8 @@ enum params {
     DRNLAPPID,
     DRNL_KEY,
     RESAMPLE,
-    FS
+    FS,
+    SEED
 };
 
 // The size of the remaining data to be sent
@@ -197,6 +198,7 @@ uint drnl_key;
 uint mask;
 uint resamp_fac;
 uint sampling_freq;
+uint32_t *seeds;
 
 //application initialisation
 void app_init(void)
@@ -241,6 +243,7 @@ void app_init(void)
     mask = 1;
     resamp_fac = params[RESAMPLE];
     sampling_freq = params[FS];
+    seeds = &params[SEED];
 
     log_info("IHCAN key=%d",drnl_key);
     log_info("data_size=%d",data_size);
@@ -340,12 +343,12 @@ void app_init(void)
 	}*/
 	//io_printf (IO_BUF,"\n");
 
+
 	io_printf (IO_BUF, "[core %d][chip %d] local_seeds=",coreID,chipID);
 	for(uint i=0;i<4;i++)
 	{
-		//local_seed[i]=seed_selection[((chipID<<8) | (coreID<<i))];
-		//local_seed[i]=seed_selection[(coreID<<i)|(chipID)];
-		local_seed[i]= ((chipID<<8) | (coreID<<i));
+		//local_seed[i]= ((chipID<<8) | (coreID<<i));
+        local_seed[i] = seeds[i];
 		io_printf (IO_BUF, "%u ",local_seed[i]);
 	}
 	io_printf (IO_BUF,"\n");

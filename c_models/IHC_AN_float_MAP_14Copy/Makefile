@@ -4,7 +4,7 @@ endif
 
 APP := IHC_AN_float_MAP
 BUILD_DIR = build/
-SOURCES = src/spinn_IHC_AN_softfloat_MAP_pipe_MC.c#spinn_IHC_AN_softfloat_MAP_single.c#src/spinn_IHC_AN_softfloat_MAP.c
+SOURCES = src/src/spinn_IHC_AN_softfloat_MAP_pipe_MC.c#spinn_IHC_AN_softfloat_MAP_single.c#src/spinn_IHC_AN_softfloat_MAP.c
 MAKEFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
 CURRENT_DIR := $(dir $(MAKEFILE_PATH))
 EXTRA_SRC_DIR := $(abspath $(CURRENT_DIR)/src) 

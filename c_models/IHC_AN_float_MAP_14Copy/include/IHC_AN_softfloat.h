@@ -20,7 +20,7 @@
 //#define SEED_SEL_SIZE (((MAX_CHIPX << 8) | MAX_CHIPY) << 8) | (MAX_COREID << 3)   
 #define SEED_SEL_SIZE 1024
 
-#define SEGSIZE 100//200 //
+#define SEGSIZE 96//100//200 //
 #define NUMLSR 1//10
 #define NUMMSR 0
 #define NUMHSR 1//10

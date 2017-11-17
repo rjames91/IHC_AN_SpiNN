@@ -22,7 +22,7 @@
 #include <recording.h>
 
 
-#define TIMER_TICK_PERIOD 10000//2300//REALTIME (2.3ms to process 100 44100Hz samples TODO: make this dependent on numfibres
+#define TIMER_TICK_PERIOD 30000//2300//REALTIME (2.3ms to process 100 44100Hz samples TODO: make this dependent on numfibres
 //#define TOTAL_TICKS 100//240//173//197
 
 #define PROFILE
@@ -92,7 +92,7 @@ REAL ANRepro[NUMFIBRES];
 startupVars generateStartupVars(void)
 {
 	startupVars out;
-	REAL Gu0,kt0,IHCV,gmax,u0,u1,s1,s0,ga,gk,et,ek,rpc,ekp,gamma,beta,mICaCurr,
+	REAL Gu0,kt0,IHCV,gmax,u0,u1,s1,s0,ga,gk,et,ek,rpc,ekp,gamma,beta,mICaCurr,mICaCurr_pow,
 	gmaxcalsr,gmaxcamsr,gmaxcahsr,eca,taucalsr,taucamsr,taucahsr,CaCurrLSR,CaCurrMSR,CaCurrHSR,kt0LSR,kt0MSR,kt0HSR,
 	ANCleftLSR,ANCleftMSR,ANCleftHSR,ANAvailLSR,ANAvailMSR,ANAvailHSR,ANReproLSR,ANReproMSR,
 	ANReproHSR,z,power,y,x,l,r,MLSR,MMSR,MHSR;
@@ -126,9 +126,14 @@ startupVars generateStartupVars(void)
 	taucalsr=200e-6;//30e-6;
 	taucamsr=0;
 	taucahsr=500e-6;//80e-6;
-	CaCurrLSR=((gmaxcalsr*pow(mICaCurr,3))*(IHCV-eca))*taucalsr;
-	CaCurrMSR=((gmaxcamsr*pow(mICaCurr,3))*(IHCV-eca))*taucamsr;
-	CaCurrHSR=((gmaxcahsr*pow(mICaCurr,3))*(IHCV-eca))*taucahsr;
+	mICaCurr_pow=mICaCurr;
+	for (int i=0;i<2;i++)
+	{
+	    mICaCurr_pow*=mICaCurr;
+	}
+	CaCurrLSR=((gmaxcalsr*mICaCurr_pow)*(IHCV-eca))*taucalsr;
+	CaCurrMSR=((gmaxcamsr*mICaCurr_pow)*(IHCV-eca))*taucamsr;
+	CaCurrHSR=((gmaxcahsr*mICaCurr_pow)*(IHCV-eca))*taucahsr;
 
 	//========Calculate AN==========//
 	z=40e12;
@@ -839,7 +844,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 				//if(vrr!=0.0) log_info("non-zero vrr\n");
 				//recording_record(0,&vrr,4);
 				//log_info("recorded %d\n",(uint)vrr);
-				out_buffer[(j*spike_seg_size)+(si-1)]  =spikes;//ANRepro[j];//releaseProb;//vrr;//utconv;//cilia_disp;//utconv;// pos_CaCurr;//ICa;//in_buffer[i];//
+				out_buffer[(j*spike_seg_size)+(si-1)] = vrr;//CaCurr[j];//pos_CaCurr;//spikes;//ANRepro[j];//releaseProb;//vrr;//utconv;//cilia_disp;//utconv;// pos_CaCurr;//ICa;//in_buffer[i];//
 				//io_printf (IO_BUF, "[core %d] index=%d\n", coreID,(j*spike_seg_size)+(si-1));
 			}
 			

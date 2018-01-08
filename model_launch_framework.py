@@ -88,7 +88,10 @@ def run_model(
 
     print "channels running: ",len(ihcans)/5.0
     print "output data: {} fibres with length {}".format(len(ihcans)*2,len(samples))
-    if(len(samples) != len(ihcans)*2*numpy.floor(len(data[0][0])/100)*100*(1.0/resample_factor)):
-        print "samples length {} isn't expected size {}".format(len(samples),len(ihcans)*2*numpy.floor(len(data[0][0])/100)*100*(1.0/resample_factor))
+    #if(len(samples) != len(ihcans)*2*numpy.floor(len(data[0][0])/100)*100*(1.0/resample_factor)):
+    if(len(samples) != len(ihcans)*2*numpy.floor(len(data[0][0])/96)*96):
+        #print "samples length {} isn't expected size {}".format(len(samples),len(ihcans)*2*numpy.floor(len(data[0][0])/100)*100*(1.0/resample_factor))
+        print "samples length {} isn't expected size {}".format(len(samples),
+              len(ihcans) * 2 * numpy.floor(len(data[0][0]) / 96)*96)
 
     return samples

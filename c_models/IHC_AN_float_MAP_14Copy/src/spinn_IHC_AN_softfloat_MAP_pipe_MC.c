@@ -20,14 +20,15 @@
 #include "log.h"
 #include <data_specification.h>
 #include <recording.h>
-
+#include <profiler.h>
+#include <profile_tags.h>
+#include <simulation.h>
 
 #define TIMER_TICK_PERIOD 3600//2300//REALTIME (2.3ms to process 100 44100Hz samples TODO: make this dependent on numfibres
 #define TOTAL_TICKS 100//240//173//197
 
-//#define PROFILE
-//#define LOOP_PROFILE
-//#define PRINT
+#define PROFILE
+#define BITFIELD
 
 //=========GLOBAL VARIABLES============//
 REAL Fs,dt,max_rate;
@@ -39,7 +40,9 @@ uint seg_index;
 uint cbuff_index;
 uint cbuff_numseg;
 uint shift_index;
-
+uint spike_count=0;
+uint data_read_count=0;
+//uint outstanding_records=0;
 
 uint read_switch;
 uint write_switch;
@@ -49,6 +52,7 @@ uint index_y;
 REAL r_max_recip;
 REAL dt_spikes;
 uint spike_seg_size;
+uint seg_output;
 uint seg_output_n_bytes;
 SEED_TYPE local_seed;
 
@@ -174,6 +178,12 @@ startupVars generateStartupVars(void)
 	
 	return out;
 }
+//data spec regions
+typedef enum regions {
+    SYSTEM,
+    PARAMS,
+    RECORDING,
+    PROFILER}regions;
 
 // The parameters to be read from memory
 enum params {
@@ -202,7 +212,7 @@ uint sampling_freq;
 uint32_t *seeds;
 
 //application initialisation
-void app_init(void)
+bool app_init(void)
 {
 	/*Fs=SAMPLING_FREQUENCY;
 	dt=(1.0/Fs);
@@ -218,23 +228,32 @@ void app_init(void)
 	write_switch=0;
 	r_max_recip=REAL_CONST(1.)/(REAL)RDM_MAX;
 	
-	/* say hello */
-	
 	io_printf (IO_BUF, "[core %d] -----------------------\n", coreID);
 	io_printf (IO_BUF, "[core %d] starting simulation\n", coreID);
-
-
 	//obtain data spec
 	address_t data_address = data_specification_get_data_address();
+	// Get the timing details and set up the simulation interface
+    if (!simulation_initialise(
+            data_specification_get_region(SYSTEM, data_address),
+            APPLICATION_NAME_HASH, NULL, NULL,
+            NULL, 1, 0)) {
+        return false;
+    }
     //get parameters
-    address_t params = data_specification_get_region(0, data_address);
+    address_t params = data_specification_get_region(PARAMS, data_address);
     //get recording region
-    address_t recording_address = data_specification_get_region(1, data_address);
+    address_t recording_address = data_specification_get_region(RECORDING, data_address);
     // Setup recording
     uint32_t recording_flags = 0;
     if (!recording_initialize(recording_address, &recording_flags)) {
         rt_error(RTE_SWERR);
+        return false;
     }
+    #ifdef PROFILE
+    // configure timer 2 for profiling
+    profiler_init(
+    data_specification_get_region(PROFILER, data_address));
+    #endif
 
     // Get the size of the data in words
     data_size = params[DATA_SIZE];
@@ -250,12 +269,21 @@ void app_init(void)
     log_info("IHCAN key=%d",drnl_key);
     log_info("data_size=%d",data_size);
     log_info("mask=%d",mask);
+    log_info("DRNL ID=%d",drnl_coreID);
+
 
     Fs=(REAL)sampling_freq;
 	dt=(1.0/Fs);
-	spike_seg_size=SEGSIZE/resamp_fac;
-	spike_seg_size/=32;
-	seg_output_n_bytes= NUMFIBRES * spike_seg_size * sizeof(REAL);
+	//spike_seg_size=((REAL)SEGSIZE/(REAL)resamp_fac)/32.0;
+	//spike_seg_size/=32.0k;
+	#ifndef BITFIELD
+	spike_seg_size = SEGSIZE;
+	#endif
+	#ifdef BITFIELD
+    spike_seg_size = SEGSIZE/32;
+	#endif
+	seg_output = NUMFIBRES * spike_seg_size;
+	seg_output_n_bytes=seg_output * sizeof(REAL);
     log_info("seg output (in bytes)=%d\n",seg_output_n_bytes);
 
 
@@ -285,12 +313,18 @@ void app_init(void)
 	dtcm_buffer_b = (REAL *) sark_alloc (SEGSIZE, sizeof(REAL));
 	//dtcm_buffer_x = (REAL *) sark_alloc (spike_seg_size*NUMFIBRES, sizeof(REAL));
 	//dtcm_buffer_y = (REAL *) sark_alloc (spike_seg_size*NUMFIBRES, sizeof(REAL));
-    dtcm_buffer_x = (uint *) sark_alloc (spike_seg_size*NUMFIBRES, sizeof(REAL));
-	dtcm_buffer_y = (uint *) sark_alloc (spike_seg_size*NUMFIBRES, sizeof(REAL));
-	dtcm_profile_buffer = (REAL *) sark_alloc (3*TOTAL_TICKS, sizeof(REAL));
+	#ifdef BITFIELD
+    dtcm_buffer_x = (uint *) sark_alloc (seg_output, sizeof(uint));
+	dtcm_buffer_y = (uint *) sark_alloc (seg_output, sizeof(uint));
+	#endif
+	#ifndef BITFIELD
+	dtcm_buffer_x = (REAL *) sark_alloc (seg_output, sizeof(REAL));
+	dtcm_buffer_y = (REAL *) sark_alloc (seg_output, sizeof(REAL));
+	#endif
+	//dtcm_profile_buffer = (REAL *) sark_alloc (3*TOTAL_TICKS, sizeof(REAL));
 	
-	if (dtcm_buffer_a == NULL ||dtcm_buffer_b == NULL ||dtcm_buffer_x == NULL ||dtcm_buffer_y == NULL 
-			||  dtcm_profile_buffer == NULL)
+	if (dtcm_buffer_a == NULL ||dtcm_buffer_b == NULL ||dtcm_buffer_x == NULL ||dtcm_buffer_y == NULL)
+		//	||  dtcm_profile_buffer == NULL)
 	/*if (sdramout_buffer == NULL || sdramin_buffer == NULL || dtcm_buffer_y == NULL 
 			|| dtcm_buffer_a == NULL || dtcm_buffer_b == NULL || dtcm_profile_buffer == NULL ||dtcm_buffer_x == NULL)*/
 	{
@@ -306,7 +340,7 @@ void app_init(void)
 			dtcm_buffer_a[i]   = 0;
 			dtcm_buffer_b[i]   = 0;
 		}
-		for (uint i = 0; i < spike_seg_size*NUMFIBRES; i++)
+		for (uint i = 0; i < seg_output; i++)
 		{
 			dtcm_buffer_x[i]   = 0;
 			dtcm_buffer_y[i]   = 0;
@@ -319,7 +353,7 @@ void app_init(void)
 
 		for (uint i=0;i<3 * TOTAL_TICKS;i++)
 		{
-			dtcm_profile_buffer[i]  = 0;
+		//	dtcm_profile_buffer[i]  = 0;
 		//	profile_buffer[i]  = 0;
 		}
 		
@@ -347,8 +381,6 @@ void app_init(void)
 
 	}*/
 	//io_printf (IO_BUF,"\n");
-
-
 	io_printf (IO_BUF, "[core %d][chip %d] local_seeds=",coreID,chipID);
 	for(uint i=0;i<4;i++)
 	{
@@ -437,13 +469,7 @@ void app_init(void)
 	Synapse.rdt=REAL_CONST(300.)*dt_spikes;//REAL_CONST(2.)*dt_spikes;
 	Synapse.refrac_period=((7.5e-4)/dt_spikes);
 
-	
-#ifdef PROFILE
-    // configure timer 2 for profiling
-    // enabled, free running, interrupt disabled, no pre-scale, 32 bit, free-running mode
-    tc[T2_CONTROL] = TIMER2_CONF;
-#endif
-    
+    return true;
 }
 
 void app_end(uint null_a,uint null_b)
@@ -455,22 +481,26 @@ void app_end(uint null_a,uint null_b)
     while (!spin1_send_mc_packet(drnl_key|2, 0, NO_PAYLOAD)) {
         spin1_delay_us(1);
     }
-
+    //log_info("outstanding records %d",outstanding_records);
     recording_finalise();
-    io_printf (IO_BUF, "spinn_exit %d\n",seg_index);
-    spin1_exit (0);
+    io_printf (IO_BUF, "spinn_exit %d data_read:%d\n",seg_index,data_read_count);
 
+    app_done();
+    simulation_exit();
+   // spin1_exit (0);
 }
 
 recording_complete_callback_t record_finished(void)
 {
-
-        log_info("record finished %d",seg_index);
+        //log_info("callback: record finished %d",seg_index);
         //flip write buffers //N.B only do this here when using recording
+        #ifdef PROFILE
+          profiler_write_entry_disable_irq_fiq(PROFILER_EXIT | PROFILER_TIMER);
+        #endif
 		write_switch=!write_switch;
 }
 
-//Currently never called //TODO: remove if 'record every sample' approach is fast enough
+//TODO: remove if 'record every sample' approach is fast enough
 void data_write(uint null_a, uint null_b)
 {
 	REAL *dtcm_buffer_out;
@@ -496,25 +526,18 @@ void data_write(uint null_a, uint null_b)
                         io_printf (IO_BUF, "buff_y write\n");
             #endif
 		}
-        #ifdef PROFILE
-          start_count_write = tc[T2_COUNT];
-        #endif
 
 		/*spin1_dma_transfer(DMA_WRITE,&sdramout_buffer[out_index],dtcm_buffer_out,DMA_WRITE,
 		  						NUMFIBRES*spike_seg_size*sizeof(REAL));
         */
-        /*while (recording_record(0, dtcm_buffer_out, seg_output_n_bytes))
-        {
-            spin1_delay_us(1);
-        }*/
-        recording_record(0, dtcm_buffer_out, seg_output_n_bytes);
-        /*recording_record_and_notify(0, dtcm_buffer_out, seg_output_n_bytes,record_finished);
-        log_info("[core %d] recording segment %d written from 0x%08x first val=%d\n", coreID,seg_index,
-                     (uint) dtcm_buffer_out,(uint)dtcm_buffer_out[0]);*/
-
+        /*recording_record(0, dtcm_buffer_out, seg_output_n_bytes);
         //flip write buffers //N.B only do this here when using recording
-		write_switch=!write_switch;
+		write_switch=!write_switch;*/
 
+        //outstanding_records++;
+        recording_record_and_notify(0, dtcm_buffer_out, seg_output_n_bytes,record_finished);
+        /*log_info("[core %d] recording segment %d written from 0x%08x first val=%d\n", coreID,seg_index,
+                     (uint) dtcm_buffer_out,(uint)dtcm_buffer_out[0]);*/
         #ifdef PRINT
         io_printf (IO_BUF, "[core %d] segment %d written to @ 0x%08x - 0x%08x\n", coreID,seg_index,
                                       (uint) &sdramout_buffer[out_index],(uint) &sdramout_buffer[out_index+(NUMFIBRES-1)*SEGSIZE+SEGSIZE-1]);
@@ -525,9 +548,9 @@ void data_write(uint null_a, uint null_b)
 //DMA read
 void data_read(uint mc_key, uint payload)
 {
+    data_read_count++;
    // log_info("mcpacket recieved %d\n",seg_index);
     uint command = mc_key & mask;
-
    // if (command==1 && seg_index==0)//ready to send packet received from DRNL
    if (command==1 && seg_index==0)//ready to send packet received from DRNL
     {
@@ -537,7 +560,6 @@ void data_read(uint mc_key, uint payload)
             sdramin_buffer = (REAL *) sark_tag_ptr (drnl_coreID, 0);
             log_info("[core %d] sdram in buffer @ 0x%08x\n", coreID,
                            (uint) sdramin_buffer);
-
             if (sdramin_buffer==NULL)//if initial input buffer setup fails
             {
                 test_DMA = FALSE;
@@ -545,7 +567,6 @@ void data_read(uint mc_key, uint payload)
                 spin1_schedule_callback(app_end,NULL,NULL,2);
                 return;
             }
-
             else
             {
                 log_info("sending ack packet");
@@ -571,16 +592,11 @@ void data_read(uint mc_key, uint payload)
     else if(command==0)
     {
         //measure time between each call of this function (should approximate the global clock)
-        end_count_read = tc[T2_COUNT];
-
-      //  log_info("time since last data read packet=%d",start_count_read-end_count_read);
-
+        //  log_info("time since last data read packet=%d",start_count_read-end_count_read);
         #ifdef PROFILE
-          start_count_read = tc[T2_COUNT];
-        #endif
-
+	     profiler_write_entry_disable_irq_fiq(PROFILER_ENTER | PROFILER_TIMER);
+		#endif
         REAL *dtcm_buffer_in;
-
         //read from DMA and copy into DTCM
         if(test_DMA == TRUE)
         {
@@ -595,23 +611,18 @@ void data_read(uint mc_key, uint payload)
                 dtcm_buffer_in=dtcm_buffer_b;
                 read_switch=0;
             }
-
             #ifdef PRINT
                     log_info ("[core %d] sdram DMA read @ 0x%08x (segment %d)\n", coreID,
                                   (uint) &sdramin_buffer[(cbuff_index)*SEGSIZE],seg_index+1);
-
-
             log_info("cbuff_index=%d",cbuff_index);
             #endif
             spin1_dma_transfer(DMA_READ,&sdramin_buffer[cbuff_index*SEGSIZE], dtcm_buffer_in, DMA_READ,
                    SEGSIZE*sizeof(REAL));
-
             //spin1_dma_transfer(DMA_READ,&sdramin_buffer[seg_index*SEGSIZE], dtcm_buffer_in, DMA_READ,
             //       SEGSIZE*sizeof(REAL));
         }
 	}
 }
-
 /*uint seed_scrambled_rgen(void)
 {
 	//function to scramble the application seed before a PRNG function call
@@ -622,10 +633,19 @@ void data_read(uint mc_key, uint payload)
 	
 	return mars_kiss64_seed(seed);
 }*/
-
+#ifdef BITFIELD
 uint process_chan(uint *out_buffer,REAL *in_buffer)
-{  
+#endif
+#ifndef BITFIELD
+uint process_chan(REAL *out_buffer,REAL *in_buffer)
+#endif
+{
+    #ifdef BITFIELD
+	uint segment_offset=seg_output*(seg_index-1);
+	#endif
+	#ifndef BITFIELD
 	uint segment_offset=NUMFIBRES*spike_seg_size*(seg_index-1);
+	#endif
 	uint i,j,k;
 	
 	REAL term_1;
@@ -666,23 +686,19 @@ uint process_chan(uint *out_buffer,REAL *in_buffer)
 	uint spike_index=0;
 	uint spike_shift=0;
 
+    #ifdef BITFIELD
     //clear buffer values (needed for bitfield writing)
-    for (uint i = 0; i < spike_seg_size*NUMFIBRES; i++)
+    for (uint i = 0; i < seg_output; i++)
     {
         out_buffer[i]   = 0;
     }
-		
-#ifdef PRINT
-	io_printf (IO_BUF, "[core %d] segment %d (offset=%d) starting processing\n", coreID,seg_index,segment_offset);
-#endif
+    #endif
+
 	for(i=0;i<SEGSIZE;i++)
-	{			  
-	/*		if(i==0)
-			{
-			#ifdef PROFILE
-			  start_count_process = tc[T2_COUNT];
-			#endif
-			}*/
+	{
+	    /*#ifdef PROFILE
+	     profiler_write_entry_disable_irq_fiq(PROFILER_ENTER | PROFILER_TIMER);
+		#endif*/
 		//=======Viscous coupling HPF========//
 		/*term_1=Cilia.filter_b1 * in_buffer[i];
 		term_2=Cilia.filter_b2 * past_ciliaDisp;
@@ -692,7 +708,7 @@ uint process_chan(uint *out_buffer,REAL *in_buffer)
 				- Cilia.filter_a1 * past_ciliaDisp;
 
 		past_ciliaDisp=cilia_disp * Cilia.C;
-			
+
 		//===========Apply Scaler============//
   	  	utconv=past_ciliaDisp;
   	  	
@@ -703,7 +719,7 @@ uint process_chan(uint *out_buffer,REAL *in_buffer)
 		
 		//ex1=exp(-(utconv-Cilia.u1)*Cilia.recips1);
 		//ex2=exp(-(utconv-Cilia.u0)*Cilia.recips0);
-  	  	
+
   	  	Guconv=Cilia.Ga + (Cilia.Gmax/(REAL_CONST(1.)+(REAL)ex2*(REAL_CONST(1.)+(REAL)ex1)));
  
 		//========Receptor Potential=========//
@@ -726,31 +742,11 @@ uint process_chan(uint *out_buffer,REAL *in_buffer)
 		{
 			micapowconv=micapowconv*mICaCurr;
 		}
-		
-		
-	/*	if(i==0)
-		{
-			#ifdef PROFILE
-			  end_count_process = tc[T2_COUNT];
-			  dtcm_profile_buffer[1+((seg_index-1)*3)]=start_count_process-end_count_process;
-			#endif
-		}*/
-		
 
-#ifdef LOOP_PROFILE
-  int end_apical_count_read = tc[T2_COUNT];
-  io_printf (IO_BUF, "first half complete in %d ticks (sample %d, segment %d)\n",start_apical_count_read-end_apical_count_read,i,seg_index);
-#endif	
-  
-#ifdef LOOP_PROFILE
-  int start_max_count_read = tc[T2_COUNT];
-#endif
-
-		if(i%resamp_fac==0)
+	/*	if(i%resamp_fac==0)
 		{
 			si++;
-		}
-
+		}*/
 		//============Fibres=============//
 		for (j=0;j<NUMFIBRES;j++)
 		{
@@ -799,7 +795,7 @@ uint process_chan(uint *out_buffer,REAL *in_buffer)
 				{
 					vrr=max_rate;
 				}*/
-		
+
 				//=====Release Probability=======//
 				releaseProb=vrr*dt_spikes;
 				M_q=Synapse.M[j]-ANAvail[j];
@@ -821,7 +817,7 @@ uint process_chan(uint *out_buffer,REAL *in_buffer)
 				{
 					refrac[j]--;
 				}	
-								
+
 				if(Probability>((REAL)random_gen()*r_max_recip))
 				{
 					ejected=REAL_CONST(1.);
@@ -885,7 +881,7 @@ uint process_chan(uint *out_buffer,REAL *in_buffer)
 				{
 					replenish=REAL_CONST(0.);
 				}
-	
+
 				//==========Update Variables=========//
 				ANAvail[j]=ANAvail[j]+replenish+reprocessed-ejected;
 				/*if(ANAvail[j]<REAL_CONST(0.))
@@ -898,18 +894,16 @@ uint process_chan(uint *out_buffer,REAL *in_buffer)
 				{
 					reuptake=REAL_CONST(1.);
 				}*/
-
 				ANCleft[j]= ANCleft[j]+ejected-reuptakeandlost;
 				/*if(ANCleft[j]<REAL_CONST(0.))
 				{
 					ANCleft[j]=REAL_CONST(0.);
 				}*/
-				ANRepro[j]=ANRepro[j]+ reuptake-reprocessed;
+   		        ANRepro[j]=ANRepro[j]+ reuptake-reprocessed;//TODO:discover why this line causes performance drop
 				/*if(ANRepro[j]<REAL_CONST(0.))
 				{
 					ANRepro[j]=REAL_CONST(0.);
 				}*/
-				
 				//=======write value to SDRAM========//
 				//out_buffer[(j*SEGSIZE)+i]  = ANReproLSR[j];//ANAvailLSR[j];//vrrlsr;// compare;//CaCurr_pow;//
 				//if(vrr!=0.0) log_info("non-zero vrr\n");
@@ -917,19 +911,26 @@ uint process_chan(uint *out_buffer,REAL *in_buffer)
 				//log_info("recorded %d\n",(uint)vrr);
 				//out_buffer[(j*spike_seg_size)+(si-1)] = spikes;//vrr;//preSyn.recTauCa[j];//CaCurr[j];//micapowconv;// startupValues.CaCurrLSR0;//in_buffer[i];//utconv;//cilia_disp;//utconv;// releaseProb;//pos_CaCurr;//ICa;//in_buffer[i];//
 				//io_printf (IO_BUF, "[core %d] index=%d\n", coreID,(j*spike_seg_size)+(si-1));
-				spike_index = (si-1)/32;
-				spike_shift = 31-((si-1)%32);
+				//spike_index = (si-1)/32;
+				//spike_shift = 31-((si-1)%32);
+				#ifdef BITFIELD
+                spike_index = (i-1)/32;
+				spike_shift = 31-((i-1)%32);
 				//log_info("spi=%d sps=%d",(j*spike_seg_size)+spike_index,spike_shift);
-                if(spikes)out_buffer[(j*spike_seg_size)+spike_index]|=(spikes<<spike_shift);
+                if(spikes)
+                {
+                    out_buffer[j*spike_seg_size+spike_index]|=(spikes<<spike_shift);
+                    spike_count++;
+                }
+                #endif
+                #ifndef BITFIELD
+                out_buffer[(j*spike_seg_size)+i] =vrr;// in_buffer[i];//ANRepro[j];//cilia_disp;//spikes;//
+           		//if(in_buffer[i]) log_info("in:%k",(accum)vrr);
+                #endif
 			}
 		}
-
-#ifdef LOOP_PROFILE
-  int end_max_count_read = tc[T2_COUNT];
-  io_printf (IO_BUF, "second half complete in %d ticks (sample %d, segment %d)\n",start_max_count_read-end_max_count_read,i,seg_index);
-#endif	
-
 	}
+    //log_info("tx: %k",(accum)out_buffer[spike_seg_size-1]);
 #ifdef PRINT
 	/*io_printf (IO_BUF, "[core %d] segment %d processed and written to @ 0x%08x\n", coreID,seg_index,
 				  (uint) sdramout_buffer);*/
@@ -943,18 +944,10 @@ uint process_chan(uint *out_buffer,REAL *in_buffer)
 
 void transfer_handler(uint tid, uint ttag)
 {
-	if (ttag==DMA_READ)
+	if (1)//ttag==DMA_READ)
 	{
-#ifdef PROFILE
-  //end_count_read = tc[T2_COUNT];
-  dtcm_profile_buffer[seg_index*3]=(REAL)(start_count_read-end_count_read);
-#ifdef PRINT
-  io_printf (IO_BUF, "read complete in %d ticks\n",start_count_read-end_count_read);
-#endif
-#endif
 		//increment segment index
 		seg_index++;
-
 	    //check circular buffer
 		if(cbuff_index<cbuff_numseg-1)
 		{    //increment circular buffer index
@@ -964,11 +957,7 @@ void transfer_handler(uint tid, uint ttag)
 		{
 		    cbuff_index=0;
 		}
-		
-		#ifdef PROFILE
-		  start_count_process = tc[T2_COUNT];
-		#endif
-		
+
 		//choose current buffers
 		if(!read_switch && !write_switch)
 		{
@@ -990,7 +979,6 @@ void transfer_handler(uint tid, uint ttag)
             io_printf (IO_BUF, "buff_a-->buff_x\n");
             #endif
 			index_x=process_chan(dtcm_buffer_x,dtcm_buffer_a);
-
 		}
 		else
 		{
@@ -998,29 +986,17 @@ void transfer_handler(uint tid, uint ttag)
             io_printf (IO_BUF, "buff_a-->buff_y\n");
             #endif
 			index_y=process_chan(dtcm_buffer_y,dtcm_buffer_a);
-		}		  
-			
-		#ifdef PROFILE
-			  end_count_process = tc[T2_COUNT];
-			  dtcm_profile_buffer[1+((seg_index-1)*3)]=start_count_process-end_count_process;
-		#ifdef PRINT
-			io_printf (IO_BUF, "process complete in %d ticks (segment %d)\n",start_count_process-end_count_process,seg_index);
-		#endif
-		#endif			
-		
+		}
+
 		spin1_trigger_user_event(NULL,NULL);
 	}
 
-	else if (ttag==DMA_WRITE)
+	else if (0)//ttag==RECORDING_DMA_COMPLETE_TAG_ID)//DMA_WRITE)
 	{
-	          io_printf (IO_BUF, "write complete in %d ticks\n",start_count_write-end_count_write);
+	          //io_printf (IO_BUF, "write complete in %d ticks\n",start_count_write-end_count_write);
+       // outstanding_records--;
+        log_info("record finished %d",seg_index);
 
-        #ifdef PROFILE
-          end_count_write = tc[T2_COUNT];
-          dtcm_profile_buffer[2+((seg_index-1)*3)]=start_count_write-end_count_write;
-        #ifdef PRINT
-        #endif
-        #endif
 		//flip write buffers
 		write_switch=!write_switch;
 	}
@@ -1030,24 +1006,17 @@ void transfer_handler(uint tid, uint ttag)
 		io_printf(IO_BUF,"[core %d] invalid %d DMA tag!\n",coreID,ttag);
 		#endif
 	}
-
 }
 
 void app_done ()
 {
   // report simulation time
-  io_printf (IO_BUF, "[core %d] simulation lasted %d ticks\n", coreID,
-             spin1_get_simulation_time());
-
+  io_printf (IO_BUF, "[core %d] simulation lasted %d ticks producing %d spikes\n", coreID,
+             spin1_get_simulation_time(),spike_count);
   //copy profile data
 #ifdef PROFILE
-  //io_printf (IO_BUF, "[core %d] saving profile data...\n", coreID);
-	for (uint i=0;i<3*TOTAL_TICKS;i++)
-	{
-		//profile_buffer[i]  = dtcm_profile_buffer[i];
-	}
+    profiler_finalise();
 #endif
-  
   // say goodbye
   io_printf (IO_BUF, "[core %d] stopping simulation\n", coreID);
   io_printf (IO_BUF, "[core %d] -------------------\n", coreID);
@@ -1058,23 +1027,21 @@ void c_main()
   // Get core and chip IDs
   coreID = spin1_get_core_id ();
   chipID = spin1_get_chip_id ();
-
   //set timer tick
-  spin1_set_timer_tick (TIMER_TICK_PERIOD);
-
-  app_init();
-
-  //setup callbacks
-  //process channel once data input has been read to DTCM
-  spin1_callback_on (DMA_TRANSFER_DONE,transfer_handler,0);
-  //reads from DMA to DTCM every MCPL packet received
-  //spin1_callback_on (MCPL_PACKET_RECEIVED,data_read,-1);
-  spin1_callback_on (MC_PACKET_RECEIVED,data_read,-1);
-  spin1_callback_on (USER_EVENT,data_write,0);
-
-  spin1_start (SYNC_WAIT);
-  
-  app_done ();
-
+  //spin1_set_timer_tick (TIMER_TICK_PERIOD);
+  if(app_init())
+  {
+      //setup callbacks
+      //process channel once data input has been read to DTCM
+      //spin1_callback_on (DMA_TRANSFER_DONE,transfer_handler,0);
+      simulation_dma_transfer_done_callback_on(DMA_READ,transfer_handler);
+      //reads from DMA to DTCM every MCPL packet received
+      //spin1_callback_on (MCPL_PACKET_RECEIVED,data_read,-1);
+      spin1_callback_on (MC_PACKET_RECEIVED,data_read,-1);
+      spin1_callback_on (USER_EVENT,data_write,0);
+      //spin1_start (SYNC_WAIT);
+      simulation_run();
+     // app_done();
+  }
 }
 

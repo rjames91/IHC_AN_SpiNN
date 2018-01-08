@@ -19,9 +19,9 @@ from spinn_front_end_common.interface.buffer_management.buffer_models\
 from spinn_front_end_common.utilities import helpful_functions
 from spinn_front_end_common.interface.buffer_management \
     import recording_utilities
-from spinn_front_end_common.utilities.utility_objs.executable_start_type \
-    import ExecutableStartType
-
+#from spinn_front_end_common.utilities.utility_objs.executable_start_type \
+#    import ExecutableStartType
+from spinn_front_end_common.utilities.utility_objs import ExecutableType
 from enum import Enum
 import numpy
 
@@ -107,7 +107,7 @@ class IHCANVertex(
 
     @overrides(AbstractHasAssociatedBinary.get_binary_start_type)
     def get_binary_start_type(self):
-        return ExecutableStartType.SYNC
+        return ExecutableType.SYNC
 
     @inject_items({
         "routing_info": "MemoryRoutingInfos",

@@ -40,7 +40,8 @@
      _a > _b ? _a : _b; })
 
 typedef struct {
-REAL filter_b1,filter_b2,filter_a1,Ga,tc,C,u0,recips0,u1,recips1,Gmax,dtCap,Et,Gk,Ek,Rpc;
+REAL Ga,C,u0,recips0,u1,recips1,Gmax,dtCap,Et,Gk,Ek,Rpc;
+double tc,filter_b1,filter_b2,filter_a1;
 } IHC_ciliaParams;
 
 typedef struct {

@@ -82,7 +82,7 @@ IHC_synParams Synapse;
 
 startupVars startupValues;
 //recurring values
-REAL past_ciliaDisp;
+double past_ciliaDisp;
 REAL IHCVnow;
 REAL mICaCurr;
 REAL CaCurr[NUMFIBRES];
@@ -249,11 +249,6 @@ bool app_init(void)
         rt_error(RTE_SWERR);
         return false;
     }
-    #ifdef PROFILE
-    // configure timer 2 for profiling
-    profiler_init(
-    data_specification_get_region(PROFILER, data_address));
-    #endif
 
     // Get the size of the data in words
     data_size = params[DATA_SIZE];
@@ -265,11 +260,16 @@ bool app_init(void)
     resamp_fac = params[RESAMPLE];
     sampling_freq = params[FS];
     seeds = &params[SEED];
-
     log_info("IHCAN key=%d",drnl_key);
     log_info("data_size=%d",data_size);
     log_info("mask=%d",mask);
     log_info("DRNL ID=%d",drnl_coreID);
+
+    #ifdef PROFILE
+    // configure timer 2 for profiling
+    profiler_init(
+    data_specification_get_region(PROFILER, data_address));
+    #endif
 
 
     Fs=(REAL)sampling_freq;
@@ -393,10 +393,10 @@ bool app_init(void)
 	validate_mars_kiss64_seed (local_seed);
 
 	//initialise cilia
-	Cilia.tc= REAL_CONST(0.00012);
-	Cilia.filter_b1= REAL_CONST(1.0);
-	Cilia.filter_b2= dt/Cilia.tc -	REAL_CONST(1.0);
-	Cilia.filter_a1= dt/Cilia.tc;
+	Cilia.tc= 0.00012;
+	Cilia.filter_b1= 1.0;
+	Cilia.filter_b2= (double)dt/Cilia.tc - 1.0;
+	Cilia.filter_a1= (double)dt/Cilia.tc;
 	Cilia.C=REAL_CONST(0.3);//REAL_CONST(0.08);
 	Cilia.u0=REAL_CONST(0.3e-9);//REAL_CONST(5e-9);
 	Cilia.recips0=REAL_CONST(1.)/REAL_CONST(6e-9);//REAL_CONST(1.)/REAL_CONST(3e-8);
@@ -651,7 +651,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 	REAL term_1;
 	REAL term_2;
 	REAL term_3;
-	REAL cilia_disp;
+	double cilia_disp;
 	REAL utconv;
 	accum ex1;
 	accum ex2;
@@ -681,6 +681,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 	REAL replenish;
 	REAL reuptakeandlost;
 	REAL reuptake;
+	double filter_1;
 	
 	uint si=0;
 	uint spike_index=0;
@@ -704,22 +705,21 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 		term_2=Cilia.filter_b2 * past_ciliaDisp;
 		term_3=Cilia.filter_a1 * past_ciliaDisp;
 		cilia_disp=term_1+term_2-term_3;*/
-		cilia_disp= Cilia.filter_b1 * in_buffer[i] + Cilia.filter_b2 * past_ciliaDisp 
-				- Cilia.filter_a1 * past_ciliaDisp;
+		/*cilia_disp= Cilia.filter_b1 * in_buffer[i] + Cilia.filter_b2 * past_ciliaDisp
+				- Cilia.filter_a1 * past_ciliaDisp;*/
+        filter_1 = Cilia.filter_b1 * in_buffer[i] + Cilia.filter_b2 * past_ciliaDisp;
+        cilia_disp = filter_1 - Cilia.filter_a1 * past_ciliaDisp;
 
 		past_ciliaDisp=cilia_disp * Cilia.C;
 
 		//===========Apply Scaler============//
   	  	utconv=past_ciliaDisp;
   	  	
-		//=========Apical Conductance========//	
-
+		//=========Apical Conductance========//
 		ex1=expk((accum)(-(utconv-Cilia.u1)*Cilia.recips1));
 		ex2=expk((accum)(-(utconv-Cilia.u0)*Cilia.recips0));
-		
 		//ex1=exp(-(utconv-Cilia.u1)*Cilia.recips1);
 		//ex2=exp(-(utconv-Cilia.u0)*Cilia.recips0);
-
   	  	Guconv=Cilia.Ga + (Cilia.Gmax/(REAL_CONST(1.)+(REAL)ex2*(REAL_CONST(1.)+(REAL)ex1)));
  
 		//========Receptor Potential=========//
@@ -924,7 +924,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
                 }
                 #endif
                 #ifndef BITFIELD
-                out_buffer[(j*spike_seg_size)+i] =vrr;// in_buffer[i];//ANRepro[j];//cilia_disp;//spikes;//
+                out_buffer[(j*spike_seg_size)+i] =in_buffer[i];//vrr;// ANRepro[j];//cilia_disp;//spikes;//
            		//if(in_buffer[i]) log_info("in:%k",(accum)vrr);
                 #endif
 			}

@@ -2,9 +2,9 @@ ifndef NEURAL_MODELLING_DIRS
     $(error NEURAL_MODELLING_DIRS is not set.  Please define NEURAL_MODELLING_DIRS (possibly by running "source setup" in the neural_modelling folder within the sPyNNaker source folder))
 endif
 
-APP := IHC_AN_float_MAP
+APP := SpiNNakEar_IHCAN
 BUILD_DIR = build/
-SOURCES = src/src/spinn_IHC_AN_softfloat_MAP_pipe_MC.c#spinn_IHC_AN_softfloat_MAP_single.c#src/spinn_IHC_AN_softfloat_MAP.c
+SOURCES = src/src/SpiNNakEar_IHCAN.c#spinn_IHC_AN_softfloat_MAP_pipe_MC.c#spinn_IHC_AN_softfloat_MAP_single.c#src/spinn_IHC_AN_softfloat_MAP.c
 MAKEFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
 CURRENT_DIR := $(dir $(MAKEFILE_PATH))
 EXTRA_SRC_DIR := $(abspath $(CURRENT_DIR)/src) 

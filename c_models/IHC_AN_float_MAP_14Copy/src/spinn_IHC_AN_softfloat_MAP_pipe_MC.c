@@ -27,8 +27,8 @@
 #define TIMER_TICK_PERIOD 3600//2300//REALTIME (2.3ms to process 100 44100Hz samples TODO: make this dependent on numfibres
 #define TOTAL_TICKS 100//240//173//197
 
-#define PROFILE
-#define BITFIELD
+//#define PROFILE
+//#define BITFIELD
 
 //=========GLOBAL VARIABLES============//
 REAL Fs,dt,max_rate;
@@ -45,7 +45,7 @@ uint data_read_count=0;
 //uint outstanding_records=0;
 
 uint read_switch;
-uint write_switch;
+bool write_switch;
 uint processing;
 uint index_x;
 uint index_y;
@@ -66,13 +66,13 @@ int start_count_write;
 int end_count_write;
 uint refrac[NUMFIBRES];
 
-REAL *dtcm_buffer_a;
-REAL *dtcm_buffer_b;
+double *dtcm_buffer_a;
+double *dtcm_buffer_b;
 REAL *dtcm_buffer_x;
 REAL *dtcm_buffer_y;
 REAL *dtcm_profile_buffer;
 
-REAL *sdramin_buffer;
+double *sdramin_buffer;
 REAL *sdramout_buffer;
 REAL *profile_buffer;
 
@@ -309,8 +309,8 @@ bool app_init(void)
 	
 	// and a buffer in DTCM
 	
-	dtcm_buffer_a = (REAL *) sark_alloc (SEGSIZE, sizeof(REAL));
-	dtcm_buffer_b = (REAL *) sark_alloc (SEGSIZE, sizeof(REAL));
+	dtcm_buffer_a = (double *) sark_alloc (SEGSIZE, sizeof(double));
+	dtcm_buffer_b = (double *) sark_alloc (SEGSIZE, sizeof(double));
 	//dtcm_buffer_x = (REAL *) sark_alloc (spike_seg_size*NUMFIBRES, sizeof(REAL));
 	//dtcm_buffer_y = (REAL *) sark_alloc (spike_seg_size*NUMFIBRES, sizeof(REAL));
 	#ifdef BITFIELD
@@ -497,6 +497,7 @@ recording_complete_callback_t record_finished(void)
         #ifdef PROFILE
           profiler_write_entry_disable_irq_fiq(PROFILER_EXIT | PROFILER_TIMER);
         #endif
+        data_read_count++;
 		write_switch=!write_switch;
 }
 
@@ -505,7 +506,7 @@ void data_write(uint null_a, uint null_b)
 {
 	REAL *dtcm_buffer_out;
 	uint out_index;
-	
+
 	if(test_DMA == TRUE)
 	{
 		if(!write_switch)
@@ -532,9 +533,11 @@ void data_write(uint null_a, uint null_b)
         */
         /*recording_record(0, dtcm_buffer_out, seg_output_n_bytes);
         //flip write buffers //N.B only do this here when using recording
-		write_switch=!write_switch;*/
+		write_switch=!write_switch;
+        profiler_write_entry_disable_irq_fiq(PROFILER_EXIT | PROFILER_TIMER);*/
 
         //outstanding_records++;
+        //profiler_write_entry_disable_irq_fiq(PROFILER_ENTER | PROFILER_TIMER);
         recording_record_and_notify(0, dtcm_buffer_out, seg_output_n_bytes,record_finished);
         /*log_info("[core %d] recording segment %d written from 0x%08x first val=%d\n", coreID,seg_index,
                      (uint) dtcm_buffer_out,(uint)dtcm_buffer_out[0]);*/
@@ -548,7 +551,6 @@ void data_write(uint null_a, uint null_b)
 //DMA read
 void data_read(uint mc_key, uint payload)
 {
-    data_read_count++;
    // log_info("mcpacket recieved %d\n",seg_index);
     uint command = mc_key & mask;
    // if (command==1 && seg_index==0)//ready to send packet received from DRNL
@@ -557,7 +559,7 @@ void data_read(uint mc_key, uint payload)
         if (sdramin_buffer==NULL)//if first time in this callback setup input buffer
         {
             log_info("[core %d] ready to send from DRNL received, setting up input buffer",coreID);
-            sdramin_buffer = (REAL *) sark_tag_ptr (drnl_coreID, 0);
+            sdramin_buffer = (double *) sark_tag_ptr (drnl_coreID, 0);
             log_info("[core %d] sdram in buffer @ 0x%08x\n", coreID,
                            (uint) sdramin_buffer);
             if (sdramin_buffer==NULL)//if initial input buffer setup fails
@@ -596,7 +598,7 @@ void data_read(uint mc_key, uint payload)
         #ifdef PROFILE
 	     profiler_write_entry_disable_irq_fiq(PROFILER_ENTER | PROFILER_TIMER);
 		#endif
-        REAL *dtcm_buffer_in;
+        double *dtcm_buffer_in;
         //read from DMA and copy into DTCM
         if(test_DMA == TRUE)
         {
@@ -617,7 +619,7 @@ void data_read(uint mc_key, uint payload)
             log_info("cbuff_index=%d",cbuff_index);
             #endif
             spin1_dma_transfer(DMA_READ,&sdramin_buffer[cbuff_index*SEGSIZE], dtcm_buffer_in, DMA_READ,
-                   SEGSIZE*sizeof(REAL));
+                   SEGSIZE*sizeof(double));
             //spin1_dma_transfer(DMA_READ,&sdramin_buffer[seg_index*SEGSIZE], dtcm_buffer_in, DMA_READ,
             //       SEGSIZE*sizeof(REAL));
         }
@@ -634,10 +636,10 @@ void data_read(uint mc_key, uint payload)
 	return mars_kiss64_seed(seed);
 }*/
 #ifdef BITFIELD
-uint process_chan(uint *out_buffer,REAL *in_buffer)
+uint process_chan(uint *out_buffer,double *in_buffer)
 #endif
 #ifndef BITFIELD
-uint process_chan(REAL *out_buffer,REAL *in_buffer)
+uint process_chan(REAL *out_buffer,double *in_buffer)
 #endif
 {
     #ifdef BITFIELD
@@ -653,10 +655,11 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 	REAL term_3;
 	double cilia_disp;
 	REAL utconv;
-	accum ex1;
-	accum ex2;
-	//REAL ex1;
-	//REAL ex2;
+	//accum ex1;
+	//accum ex2;
+	REAL ex1;
+	REAL ex2;
+	REAL ex3;
 	REAL Guconv;
 	REAL mICaINF;
 	REAL micapowconv;
@@ -707,6 +710,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 		cilia_disp=term_1+term_2-term_3;*/
 		/*cilia_disp= Cilia.filter_b1 * in_buffer[i] + Cilia.filter_b2 * past_ciliaDisp
 				- Cilia.filter_a1 * past_ciliaDisp;*/
+
         filter_1 = Cilia.filter_b1 * in_buffer[i] + Cilia.filter_b2 * past_ciliaDisp;
         cilia_disp = filter_1 - Cilia.filter_a1 * past_ciliaDisp;
 
@@ -714,6 +718,8 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 
 		//===========Apply Scaler============//
   	  	utconv=past_ciliaDisp;
+
+  	  	//utconv = in_buffer[i];
   	  	
 		//=========Apical Conductance========//
 		ex1=expk((accum)(-(utconv-Cilia.u1)*Cilia.recips1));
@@ -726,10 +732,10 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
 		IHCVnow+=((-Guconv*(IHCVnow-Cilia.Et))-(Cilia.Gk*(IHCVnow-startupValues.Ekp)))*Cilia.dtCap;
 	
 		//================mICa===============//
-		ex1=expk((accum)-preSyn.gamma*IHCVnow);
-		//ex1=exp(-preSyn.gamma*IHCVnow);
+		ex3=expk((accum)-preSyn.gamma*IHCVnow);
+		//ex3=exp(-preSyn.gamma*IHCVnow);
 		
-		mICaINF=REAL_CONST(1.)/(REAL_CONST(1.)+(REAL)ex1*preSyn.recipBeta);
+		mICaINF=REAL_CONST(1.)/(REAL_CONST(1.)+(REAL)ex3*preSyn.recipBeta);
 		mICaCurr+=(mICaINF-mICaCurr)*preSyn.dtTauM;
 		/*if(mICaCurr<REAL_CONST(0.))
 		{
@@ -924,7 +930,7 @@ uint process_chan(REAL *out_buffer,REAL *in_buffer)
                 }
                 #endif
                 #ifndef BITFIELD
-                out_buffer[(j*spike_seg_size)+i] =in_buffer[i];//vrr;// ANRepro[j];//cilia_disp;//spikes;//
+                out_buffer[(j*spike_seg_size)+i] =vrr;//Guconv;//ex1;//utconv;//IHCVnow;//in_buffer[i];//ANCleft[j];// ANRepro[j];//cilia_disp;//spikes;//
            		//if(in_buffer[i]) log_info("in:%k",(accum)vrr);
                 #endif
 			}

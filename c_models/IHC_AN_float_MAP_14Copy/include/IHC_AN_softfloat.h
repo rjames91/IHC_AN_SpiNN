@@ -56,5 +56,13 @@ REAL numFibres,refrac_period,TW_delay,spike_Fs,ydt,xdt,ldt,rdt;
 REAL M[NUMFIBRES];
 } IHC_synParams;
 
+typedef struct{
+
+	REAL mICaCurr0,CaCurrLSR0,CaCurrMSR0,CaCurrHSR0,ANCleftLSR0,ANCleftMSR0,ANCleftHSR0,
+		ANAvailLSR0,ANAvailMSR0,ANAvailHSR0,ANReproLSR0,ANReproMSR0,ANReproHSR0,Ekp,IHCVnow0;
+
+}startupVars;
+
+startupVars generateStartupVars(void);
 
 #endif /* IHC_AN_H_ */

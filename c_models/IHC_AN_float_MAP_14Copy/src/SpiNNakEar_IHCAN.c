@@ -412,7 +412,7 @@ void app_end(uint null_a,uint null_b)
 
     log_info("sending final ack packet and ending application\n");
     //send final ack to parent DRNL
-    while (!spin1_send_mc_packet(drnl_key|2, 0, NO_PAYLOAD)) {
+    while (!spin1_send_mc_packet(drnl_key|2, 0, WITH_PAYLOAD)) {
         spin1_delay_us(1);
     }
     recording_finalise();
@@ -483,7 +483,7 @@ void data_read(uint mc_key, uint payload)
             {
                 log_info("sending ack packet");
                 //now input buffer is allocated send acknowledgement back to parent DRNL
-                while (!spin1_send_mc_packet(drnl_key|2, 0, NO_PAYLOAD))
+                while (!spin1_send_mc_packet(drnl_key|2, 0, WITH_PAYLOAD))
                 {
                     spin1_delay_us(1);
                 }

@@ -1,16 +1,27 @@
-ifndef NEURAL_MODELLING_DIRS
-    $(error NEURAL_MODELLING_DIRS is not set.  Please define NEURAL_MODELLING_DIRS (possibly by running "source setup" in the neural_modelling folder within the sPyNNaker source folder))
+ifndef SPINN_DIRS
+    $(error SPINN_DIRS is not set.  Please define SPINN_DIRS (possibly by running "source setup" in spinnaker_tools folder))
 endif
 
-APP := SpiNNakEar_IHCAN
-BUILD_DIR = build/
-SOURCES = src/src/SpiNNakEar_IHCAN.c#spinn_IHC_AN_softfloat_MAP_pipe_MC.c#spinn_IHC_AN_softfloat_MAP_single.c#src/spinn_IHC_AN_softfloat_MAP.c
+# The name of the application to be built (binary will be this with a `.aplx`
+# extension)
+APP = SpiNNakEar_IHCAN
+
+# Directory to place compilation artefacts (must include trailing slash)
+BUILD_DIR = ./build/
+
+#APP_OUTPUT_DIR := $(abspath $(CURRENT_DIR))../../../OME_SpiNN/model_binaries/
+APP_OUTPUT_DIR := $(abspath $(CURRENT_DIR))model_binaries/
+
+# The sources to be compiled
 MAKEFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
 CURRENT_DIR := $(dir $(MAKEFILE_PATH))
-EXTRA_SRC_DIR := $(abspath $(CURRENT_DIR)/src) 
-SOURCE_DIRS += $(EXTRA_SRC_DIR)
-SOURCE_DIRS += $(SPINN_DIRS)/spinn_common/src
-APP_OUTPUT_DIR := $(abspath $(CURRENT_DIR)../../../OME_SpiNN/model_binaries/)/#$(abspath $(CURRENT_DIR)../../model_binaries/)/#
-CFLAGS +=-lm -I$(NEURAL_MODELLING_DIRS)/src -Isrc/ -Iinclude/ -I$(SPINN_DIRS)/spinn_common/include -ffast-math
+SOURCE_DIR := $(abspath $(CURRENT_DIR))/src
+SOURCE_DIRS := $(SOURCE_DIR)
 
-include $(NEURAL_MODELLING_DIRS)/src/Makefile.common
+SOURCES = SpiNNakEar_IHCAN.c
+LIBRARIES += -lm
+CFLAGS +=-ffast-math
+
+include $(SPINN_DIRS)/make/local.mk
+
+all: $(APP_OUTPUT_DIR)$(APP).aplx

@@ -21,6 +21,7 @@
 #include <profiler.h>
 #include <profile_tags.h>
 #include <simulation.h>
+#include <debug.h>
 
 //#define PROFILE
 #define BITFIELD //define this if using spike (bitfield) output
@@ -208,7 +209,7 @@ bool app_init(void)
 	write_switch=0;
 	r_max_recip=REAL_CONST(1.)/(REAL)RDM_MAX;
 	
-	io_printf (IO_BUF, "[core %d] -----------------------\n", coreID);
+//	io_printf (IO_BUF, "[core %d] -----------------------\n", coreID);
 	io_printf (IO_BUF, "[core %d] starting simulation\n", coreID);
 	//obtain data spec
 	address_t data_address = data_specification_get_data_address();
@@ -292,8 +293,8 @@ bool app_init(void)
 	    dtcm_buffer_x == NULL ||dtcm_buffer_y == NULL)
 	{
 		test_DMA = FALSE;
-		io_printf (IO_BUF, "[core %d] error - cannot allocate buffer\n"
-		           ,coreID);
+//		io_printf (IO_BUF, "[core %d] error - cannot allocate buffer\n"
+//		           ,coreID);
 	}
 	else
 	{
@@ -310,21 +311,21 @@ bool app_init(void)
 			dtcm_buffer_y[i]   = 0;
 		}
 
-		io_printf (IO_BUF, "[core %d] dtcm buffer a @ 0x%08x\n", coreID,
-				   (uint) dtcm_buffer_a);
+//		io_printf (IO_BUF, "[core %d] dtcm buffer a @ 0x%08x\n", coreID,
+//				   (uint) dtcm_buffer_a);
 	}
 	
 	//============MODEL INITIALISATION================//
 	//calculate startup values
 	startupValues=generateStartupVars();
     //initialise random number generator
-	io_printf (IO_BUF, "[core %d][chip %d] local_seeds=",coreID,chipID);
+//	io_printf (IO_BUF, "[core %d][chip %d] local_seeds=",coreID,chipID);
 	for(uint i=0;i<4;i++)
 	{
         local_seed[i] = seeds[i];
-		io_printf (IO_BUF, "%u ",local_seed[i]);
+//		io_printf (IO_BUF, "%u ",local_seed[i]);
 	}
-	io_printf (IO_BUF,"\n");
+//	io_printf (IO_BUF,"\n");
 
 	//initialise random number gen
 	validate_mars_kiss64_seed (local_seed);
@@ -407,6 +408,21 @@ bool app_init(void)
     return true;
 }
 
+
+void app_done()
+{
+    // report simulation time
+//    io_printf (IO_BUF, "[core %d] simulation lasted %d ticks producing %d spikes\n",
+//                coreID,spin1_get_simulation_time(),spike_count);
+    //copy profile data
+    #ifdef PROFILE
+        profiler_finalise();
+    #endif
+    // say goodbye
+//    io_printf (IO_BUF, "[core %d] stopping simulation\n", coreID);
+//    io_printf (IO_BUF, "[core %d] -------------------\n", coreID);
+}
+
 void app_end(uint null_a,uint null_b)
 {
 
@@ -416,11 +432,12 @@ void app_end(uint null_a,uint null_b)
         spin1_delay_us(1);
     }
     recording_finalise();
-    io_printf (IO_BUF, "spinn_exit %d data_read:%d\n",seg_index,
-                data_read_count);
+//    io_printf (IO_BUF, "spinn_exit %d data_read:%d\n",seg_index,
+//                data_read_count);
 
     app_done();
-    simulation_exit();
+//    simulation_exit();
+    simulation_ready_to_read();
 }
 
 recording_complete_callback_t record_finished(void)
@@ -474,8 +491,8 @@ void data_read(uint mc_key, uint payload)
             if (sdramin_buffer==NULL)//if initial input buffer setup fails
             {
                 test_DMA = FALSE;
-                io_printf (IO_BUF, "[core %d] error - cannot allocate"
-                            "buffer, ending application\n", coreID);
+//                io_printf (IO_BUF, "[core %d] error - cannot allocate"
+//                            "buffer, ending application\n", coreID);
                 spin1_schedule_callback(app_end,NULL,NULL,2);
                 return;
             }
@@ -763,20 +780,6 @@ void transfer_handler(uint tid, uint ttag)
     }
     //triggers a write to recording region callback
     spin1_trigger_user_event(NULL,NULL);
-}
-
-void app_done ()
-{
-    // report simulation time
-    io_printf (IO_BUF, "[core %d] simulation lasted %d ticks producing %d spikes\n",
-                coreID,spin1_get_simulation_time(),spike_count);
-    //copy profile data
-    #ifdef PROFILE
-        profiler_finalise();
-    #endif
-    // say goodbye
-    io_printf (IO_BUF, "[core %d] stopping simulation\n", coreID);
-    io_printf (IO_BUF, "[core %d] -------------------\n", coreID);
 }
 
 void c_main()

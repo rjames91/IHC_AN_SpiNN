@@ -434,7 +434,7 @@ void app_end(uint null_a,uint null_b)
     recording_finalise();
     io_printf (IO_BUF, "spinn_exit %d data_read:%d\n",seg_index,
                 data_read_count);
-
+//
     app_done();
 //    simulation_exit();
     simulation_ready_to_read();

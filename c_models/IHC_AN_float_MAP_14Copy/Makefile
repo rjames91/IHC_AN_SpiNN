@@ -9,8 +9,8 @@ APP = SpiNNakEar_IHCAN
 # Directory to place compilation artefacts (must include trailing slash)
 BUILD_DIR = ./build/
 
-#APP_OUTPUT_DIR := $(abspath $(CURRENT_DIR))../../../OME_SpiNN/model_binaries/
-APP_OUTPUT_DIR := $(abspath $(CURRENT_DIR))model_binaries/
+APP_OUTPUT_DIR := $(abspath $(CURRENT_DIR))../../../OME_SpiNN/model_binaries/
+#APP_OUTPUT_DIR := $(abspath $(CURRENT_DIR))model_binaries/
 
 # The sources to be compiled
 MAKEFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
@@ -19,8 +19,8 @@ SOURCE_DIR := $(abspath $(CURRENT_DIR))/src
 SOURCE_DIRS := $(SOURCE_DIR)
 
 SOURCES = SpiNNakEar_IHCAN.c
-LIBRARIES += -lm
-CFLAGS +=-ffast-math
+#LIBRARIES += -lm
+CFLAGS +=-Iinclude/ -ffast-math
 
 include $(SPINN_DIRS)/make/local.mk
 

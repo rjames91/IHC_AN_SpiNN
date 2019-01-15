@@ -185,6 +185,7 @@ enum params {
     DRNL_KEY,
     RESAMPLE,
     FS,
+    AN_KEY,
     SEED
 };
 
@@ -196,6 +197,7 @@ uint drnl_key;
 uint mask;
 uint resamp_fac;
 uint sampling_freq;
+uint an_key;
 uint32_t *seeds;
 
 //application initialisation
@@ -247,12 +249,14 @@ bool app_init(void)
     //factor to perform vesicle model resampling by
     resamp_fac = params[RESAMPLE];
     sampling_freq = params[FS];
+    an_key = params[AN_KEY];
     //RNG seeds
     seeds = &params[SEED];
     log_info("IHCAN key=%d",drnl_key);
     log_info("data_size=%d",data_size);
     log_info("mask=%d",mask);
     log_info("DRNL ID=%d",drnl_coreID);
+    log_info("AN kay=%d",an_key);
 
     #ifdef PROFILE
     // configure timer 2 for profiling
@@ -412,8 +416,8 @@ bool app_init(void)
 void app_done()
 {
     // report simulation time
-    io_printf (IO_BUF, "[core %d] simulation lasted %d ticks producing %d spikes\n",
-                coreID,spin1_get_simulation_time(),spike_count);
+    io_printf (IO_BUF, "[core %d] simulation produced %d spikes\n",
+                coreID,spike_count);
     //copy profile data
     #ifdef PROFILE
         profiler_finalise();
@@ -425,8 +429,7 @@ void app_done()
 
 void app_end(uint null_a,uint null_b)
 {
-
-    log_info("sending final ack packet and ending application\n");
+    io_printf(IO_BUF,"sending final ack packet and ending application\n");
     //send final ack to parent DRNL
     while (!spin1_send_mc_packet(drnl_key|2, 0, WITH_PAYLOAD)) {
         spin1_delay_us(1);
@@ -434,7 +437,6 @@ void app_end(uint null_a,uint null_b)
     recording_finalise();
     io_printf (IO_BUF, "spinn_exit %d data_read:%d\n",seg_index,
                 data_read_count);
-//
     app_done();
 //    simulation_exit();
     simulation_ready_to_read();
@@ -482,11 +484,11 @@ void data_read(uint mc_key, uint payload)
     {
         if (sdramin_buffer==NULL)//if first time in this callback setup input buffer
         {
-            log_info("[core %d] ready to send from DRNL received,"
-                        "setting up input buffer",coreID);
+            io_printf(IO_BUF,"[core %d] ready to send from DRNL received,"
+                        "setting up input buffer\n",coreID);
             //obtain pointer to shared SDRAM circular buffer with parent DRNL
             sdramin_buffer = (double *) sark_tag_ptr (drnl_coreID, 0);
-            log_info("[core %d] sdram in buffer @ 0x%08x\n", coreID,
+            io_printf(IO_BUF,"[core %d] sdram in buffer @ 0x%08x\n", coreID,
                            (uint) sdramin_buffer);
             if (sdramin_buffer==NULL)//if initial input buffer setup fails
             {
@@ -498,7 +500,7 @@ void data_read(uint mc_key, uint payload)
             }
             else
             {
-                log_info("sending ack packet");
+                io_printf(IO_BUF,"sending ack packet from $d\n",drnl_key);
                 //now input buffer is allocated send acknowledgement back to parent DRNL
                 while (!spin1_send_mc_packet(drnl_key|2, 0, WITH_PAYLOAD))
                 {
@@ -676,6 +678,11 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
 					if (refrac[j]<=0)
 					{
 						spikes = 1;
+						//TODO: send spike here
+						//may want to introduce some random back off but probably not as each instance has a different refrac
+                        //transmit spike with unique ID to SpiNNaker fabric
+                        spin1_send_mc_packet(an_key|j,0,NO_PAYLOAD);
+
 						refrac[j]=(uint)(Synapse.refrac_period +
 						           (((REAL)random_gen()*r_max_recip)*
 						            Synapse.refrac_period)+REAL_CONST(0.5));

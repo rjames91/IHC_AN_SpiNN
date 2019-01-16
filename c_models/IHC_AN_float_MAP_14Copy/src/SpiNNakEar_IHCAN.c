@@ -256,7 +256,7 @@ bool app_init(void)
     log_info("data_size=%d",data_size);
     log_info("mask=%d",mask);
     log_info("DRNL ID=%d",drnl_coreID);
-    log_info("AN kay=%d",an_key);
+    log_info("AN key=%d",an_key);
 
     #ifdef PROFILE
     // configure timer 2 for profiling

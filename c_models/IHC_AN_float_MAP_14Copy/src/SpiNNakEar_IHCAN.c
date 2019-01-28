@@ -225,16 +225,16 @@ bool app_init(void)
     //get parameters
     address_t params = data_specification_get_region(
                                         PARAMS,data_address);
-    //get recording region
-    address_t recording_address = data_specification_get_region(
-                                        RECORDING,data_address);
-    // Setup recording
-    uint32_t recording_flags = 0;
-    if (!recording_initialize(recording_address, &recording_flags))
-    {
-        rt_error(RTE_SWERR);
-        return false;
-    }
+//    //get recording region
+//    address_t recording_address = data_specification_get_region(
+//                                        RECORDING,data_address);
+//    // Setup recording
+//    uint32_t recording_flags = 0;
+//    if (!recording_initialize(recording_address, &recording_flags))
+//    {
+//        rt_error(RTE_SWERR);
+//        return false;
+//    }
 
     // Get the size of the data in words
     data_size = params[DATA_SIZE];
@@ -434,7 +434,7 @@ void app_end(uint null_a,uint null_b)
     while (!spin1_send_mc_packet(drnl_key|2, 0, WITH_PAYLOAD)) {
         spin1_delay_us(1);
     }
-    recording_finalise();
+//    recording_finalise();
     io_printf (IO_BUF, "spinn_exit %d data_read:%d\n",seg_index,
                 data_read_count);
     app_done();
@@ -470,8 +470,8 @@ void data_write(uint null_a, uint null_b)
 			out_index=index_y;
 			dtcm_buffer_out=dtcm_buffer_y;
 		}
-        recording_record_and_notify(0, dtcm_buffer_out,
-                                    seg_output_n_bytes,record_finished);
+//        recording_record_and_notify(0, dtcm_buffer_out,
+//                                    seg_output_n_bytes,record_finished);
 	}
 }
 
@@ -786,7 +786,7 @@ void transfer_handler(uint tid, uint ttag)
         index_y=process_chan(dtcm_buffer_y,dtcm_buffer_a);
     }
     //triggers a write to recording region callback
-    spin1_trigger_user_event(NULL,NULL);
+//    spin1_trigger_user_event(NULL,NULL);
 }
 
 void c_main()

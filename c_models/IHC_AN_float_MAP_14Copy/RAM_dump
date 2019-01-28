@@ -1,3 +1,0 @@
-sp 0 0
-sdump ./dump_files/dump1.bin 0x60279c2c 0x303c
-

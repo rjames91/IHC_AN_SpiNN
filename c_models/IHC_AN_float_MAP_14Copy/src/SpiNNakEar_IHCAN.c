@@ -266,13 +266,11 @@ bool app_init(void)
 
     Fs=(REAL)sampling_freq;
 	dt=(1.0/Fs);
-	#ifndef BITFIELD
-	spike_seg_size = SEGSIZE;
-	#endif
+	seg_output = NUMFIBRES * SEGSIZE;
 	#ifdef BITFIELD
-    spike_seg_size = SEGSIZE/32;
+    seg_output /= 32;
+    if (seg_output==0)seg_output=1;
 	#endif
-	seg_output = NUMFIBRES * spike_seg_size;
 	seg_output_n_bytes=seg_output * sizeof(REAL);
     log_info("seg output (in bytes)=%d\n",seg_output_n_bytes);
 

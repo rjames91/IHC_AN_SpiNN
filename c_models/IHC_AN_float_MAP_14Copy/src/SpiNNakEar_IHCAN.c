@@ -432,6 +432,10 @@ void app_end(uint null_a,uint null_b)
     while (!spin1_send_mc_packet(drnl_key|2, 0, WITH_PAYLOAD)) {
         spin1_delay_us(1);
     }
+    while (!spin1_send_mc_packet(an_key, 0, WITH_PAYLOAD)) {
+    spin1_delay_us(1);
+    }
+
 //    recording_finalise();
     io_printf (IO_BUF, "spinn_exit %d data_read:%d\n",seg_index,
                 data_read_count);

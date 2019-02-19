@@ -19,7 +19,7 @@
 typedef struct key_mask_table {
     uint32_t key;
     uint32_t mask;
-    uint32_t n_atoms;
+    uint32_t offset;
 } key_mask_table_entry;
 
 

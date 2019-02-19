@@ -502,7 +502,7 @@ void data_read(uint mc_key, uint payload)
             }
             else
             {
-                io_printf(IO_BUF,"sending ack packet from $d\n",drnl_key);
+                io_printf(IO_BUF,"sending ack packet from %d\n",drnl_key);
                 //now input buffer is allocated send acknowledgement back to parent DRNL
                 while (!spin1_send_mc_packet(drnl_key|2, 0, WITH_PAYLOAD))
                 {
@@ -514,6 +514,7 @@ void data_read(uint mc_key, uint payload)
     else if (command==1 && seg_index>0)
     {
         //DRNL has finished writing to SDRAM schedule end callback
+        io_printf(IO_BUF,"drnl end\n");
         spin1_schedule_callback(app_end,NULL,NULL,2);
     }
     else if(command==0)//command is 0 therefore next segment in input buffer memory is ready

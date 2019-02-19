@@ -25,12 +25,15 @@ enum params {
     N_IHCS,
     AN_KEY,
     IS_KEY,
+    IS_FINAL,
     IHC_KEYS
 };
 
 uint32_t an_key;
 uint32_t is_key;
 uint32_t n_ihcs;
+uint32_t is_final;
+bool final_r2s;
 static key_mask_table_entry *key_mask_table;
 uint32_t coreID,chipID;
 
@@ -61,12 +64,15 @@ bool app_init(void)
     spin1_memcpy(key_mask_table, &params[IHC_KEYS],n_ihc_key_bytes);
 
     for (uint i=0;i<n_ihcs;i++){
-        io_printf(IO_BUF,"ihc key:%d mask:0x%x\n",key_mask_table[i].key,key_mask_table[i].mask);
+        io_printf(IO_BUF,"ihc key:0x%x mask:0x%x offset:%d\n",key_mask_table[i].key,key_mask_table[i].mask,key_mask_table[i].offset);
     }
     an_key = params[AN_KEY];
     is_key = params[IS_KEY];
+    is_final = params[IS_FINAL];
     io_printf(IO_BUF,"an_key=%d\n",an_key);
     io_printf(IO_BUF,"is_key=%d\n",is_key);
+    io_printf(IO_BUF,"is_final=%d\n",is_final);
+    final_r2s = 0;
 }
 
 void key_search_and_send(uint32_t spike,uint null){
@@ -77,15 +83,16 @@ void key_search_and_send(uint32_t spike,uint null){
     uint32_t imid;
     key_mask_table_entry entry;
     while (imin < imax) {
+//    for (uint imid=0;imid<imax;imid++){
         imid = (imax + imin) >> 1;
         entry = key_mask_table[imid];
         if ((spike & entry.mask) == entry.key){
-            uint32_t neuron_id = (entry.n_atoms*imid)+ (spike & ~entry.mask);
-//            io_printf(IO_BUF,"id:%d\n",neuron_id);
+            uint32_t neuron_id = entry.offset+ (spike & ~entry.mask);
+//            io_printf(IO_BUF,"id: %d txk: 0x%x\n",neuron_id,an_key|neuron_id);
             while(!spin1_send_mc_packet(an_key|neuron_id,0,NO_PAYLOAD)){
                 spin1_delay_us(1);
             }
-            break;
+            return;
         }
         else if (entry.key < spike) {
             // Entry must be in upper part of the table
@@ -95,7 +102,7 @@ void key_search_and_send(uint32_t spike,uint null){
             imax = imid;
         }
     }
-
+    io_printf(IO_BUF,"key %d not found!\n",(uint32_t)(spike & entry.mask));
 }
 
 //void user_event_callback(uint null,uint null){
@@ -113,13 +120,19 @@ void spike_rx(uint32_t mc_key, uint null){
 
 void app_end()
 {
+//    if (!is_final){
+//        while (!spin1_send_mc_packet(an_key, 0, WITH_PAYLOAD)) {
+//            spin1_delay_us(1);
+//        }
+//    }
     spin1_exit(0);
     io_printf (IO_BUF, "spinn_exit\n");
 }
 
 void mc_payload_rx_callback(uint null_a, uint null_b){
 //    app_end();
-    spin1_schedule_callback(app_end,NULL,NULL,2);
+    if(final_r2s)spin1_schedule_callback(app_end,NULL,NULL,2);
+    else final_r2s = 1;
 }
 
 void c_main()

@@ -45,6 +45,7 @@ uint index_x;
 uint index_y;
 REAL r_max_recip;
 REAL dt_spikes;
+REAL dt_segment;
 uint spike_seg_size;
 uint seg_output;
 uint seg_output_n_bytes;
@@ -60,8 +61,10 @@ uint refrac[NUMFIBRES];
 
 double *dtcm_buffer_a;
 double *dtcm_buffer_b;
-REAL *dtcm_buffer_x;
-REAL *dtcm_buffer_y;
+//REAL *dtcm_buffer_x;
+//REAL *dtcm_buffer_y;
+uint32_t *dtcm_buffer_x;
+uint32_t *dtcm_buffer_y;
 
 double *sdramin_buffer;
 
@@ -186,6 +189,7 @@ enum params {
     RESAMPLE,
     FS,
     AN_KEY,
+    IS_RECORDING,
     SEED
 };
 
@@ -199,7 +203,23 @@ uint resamp_fac;
 uint sampling_freq;
 uint an_key;
 uint32_t *seeds;
+uint32_t is_recording;
+uint32_t recording_flags;
 
+
+//! \brief Initialises the recording parts of the model
+//! \return True if recording initialisation is successful, false otherwise
+static bool initialise_recording(){
+    address_t address = data_specification_get_data_address();
+    address_t recording_region = data_specification_get_region(
+            RECORDING, address);
+
+    log_info("Recording starts at 0x%08x", recording_region);
+
+    bool success = recording_initialize(recording_region, &recording_flags);
+    log_info("Recording flags = 0x%08x", recording_flags);
+    return success;
+}
 //application initialisation
 bool app_init(void)
 {
@@ -225,17 +245,23 @@ bool app_init(void)
     //get parameters
     address_t params = data_specification_get_region(
                                         PARAMS,data_address);
-//    //get recording region
-//    address_t recording_address = data_specification_get_region(
-//                                        RECORDING,data_address);
-//    // Setup recording
-//    uint32_t recording_flags = 0;
-//    if (!recording_initialize(recording_address, &recording_flags))
-//    {
-//        rt_error(RTE_SWERR);
-//        return false;
-//    }
 
+    is_recording = params[IS_RECORDING];
+    log_info("is_recording=%d",is_recording);
+    if(is_recording){
+        if (!initialise_recording()) return false;
+    }
+//        //get recording region
+//        address_t recording_address = data_specification_get_region(
+//                                            RECORDING,data_address);
+//        // Setup recording
+//        uint32_t recording_flags = 0;
+//        if (!recording_initialize(recording_address, &recording_flags))
+//        {
+//            rt_error(RTE_SWERR);
+//            return false;
+//        }
+//    }
     // Get the size of the data in words
     data_size = params[DATA_SIZE];
     //get the core ID if the parent DRNL
@@ -268,14 +294,20 @@ bool app_init(void)
 	dt=(1.0/Fs);
 	seg_output = NUMFIBRES * SEGSIZE;
 	#ifdef BITFIELD
-    seg_output /= 32;
+    seg_output /= 8;
     if (seg_output==0)seg_output=1;
+//    seg_output_n_bytes=seg_output * sizeof(uint8_t);
+    seg_output_n_bytes=seg_output * sizeof(uint32_t);
 	#endif
+	#ifndef BITFIELD
 	seg_output_n_bytes=seg_output * sizeof(REAL);
+	#endif
     log_info("seg output (in bytes)=%d\n",seg_output_n_bytes);
+    spike_seg_size = seg_output/NUMFIBRES;
 
 	max_rate=Fs/(REAL)resamp_fac;
 	dt_spikes=(REAL)resamp_fac*dt;
+	dt_segment = dt*SEGSIZE;
 
 	//Alocate buffers in DTCM
 	//input buffers
@@ -283,8 +315,10 @@ bool app_init(void)
 	dtcm_buffer_b = (double *) sark_alloc (SEGSIZE, sizeof(double));
     //output buffers
 	#ifdef BITFIELD
-    dtcm_buffer_x = (uint *) sark_alloc (seg_output, sizeof(uint));
-	dtcm_buffer_y = (uint *) sark_alloc (seg_output, sizeof(uint));
+//    dtcm_buffer_x = (uint8_t *) sark_alloc (seg_output, sizeof(uint8_t));
+//	dtcm_buffer_y = (uint8_t *) sark_alloc (seg_output, sizeof(uint8_t));
+    dtcm_buffer_x = (uint32_t *) sark_alloc (seg_output, sizeof(uint32_t));
+	dtcm_buffer_y = (uint32_t *) sark_alloc (seg_output, sizeof(uint32_t));
 	#endif
 	#ifndef BITFIELD
 	dtcm_buffer_x = (REAL *) sark_alloc (seg_output, sizeof(REAL));
@@ -435,8 +469,8 @@ void app_end(uint null_a,uint null_b)
     while (!spin1_send_mc_packet(an_key, 0, WITH_PAYLOAD)) {
     spin1_delay_us(1);
     }
+    if(is_recording)recording_finalise();
 
-//    recording_finalise();
     io_printf (IO_BUF, "spinn_exit %d data_read:%d\n",seg_index,
                 data_read_count);
     app_done();
@@ -457,7 +491,13 @@ recording_complete_callback_t record_finished(void)
 
 void data_write(uint null_a, uint null_b)
 {
+    #ifdef BITFIELD
+//	uint8_t *dtcm_buffer_out;
+	uint32_t *dtcm_buffer_out;
+	#endif
+	#ifndef BITFIELD
 	REAL *dtcm_buffer_out;
+	#endif
 	uint out_index;
 	if(test_DMA == TRUE)
 	{
@@ -472,8 +512,12 @@ void data_write(uint null_a, uint null_b)
 			out_index=index_y;
 			dtcm_buffer_out=dtcm_buffer_y;
 		}
-//        recording_record_and_notify(0, dtcm_buffer_out,
-//                                    seg_output_n_bytes,record_finished);
+		if(is_recording){
+//            recording_record_and_notify(0, dtcm_buffer_out,
+//                                    4,record_finished);
+            recording_record_and_notify(0, dtcm_buffer_out,
+                                    seg_output_n_bytes,record_finished);
+        }
 	}
 }
 
@@ -547,7 +591,8 @@ void data_read(uint mc_key, uint payload)
 ////---------Main segment processing loop-----////
 //select correct output buffer type
 #ifdef BITFIELD
-uint process_chan(uint *out_buffer,double *in_buffer)
+//uint process_chan(uint8_t *out_buffer,double *in_buffer)
+uint process_chan(uint32_t *out_buffer,double *in_buffer)
 #endif
 #ifndef BITFIELD
 uint process_chan(REAL *out_buffer,double *in_buffer)
@@ -681,9 +726,7 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
 					if (refrac[j]<=0)
 					{
 						spikes = 1;
-						//TODO: send spike here
-						//may want to introduce some random back off but probably not as each instance has a different refrac
-                        //transmit spike with unique ID to SpiNNaker fabric
+//						REAL spike_time = dt_segment * (REAL)seg_index + (REAL)i * dt;
                         spin1_send_mc_packet(an_key|j,0,NO_PAYLOAD);
 
 						refrac[j]=(uint)(Synapse.refrac_period +
@@ -740,12 +783,15 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
    		        ANRepro[j]=ANRepro[j]+ reuptake-reprocessed;
 				//=======write output value to SDRAM========//
 				#ifdef BITFIELD
-                spike_index = (i-1)/32;
-				spike_shift = 31-((i-1)%32);
+//                spike_index = (i-1)/32;
+//				spike_shift = 31-((i-1)%32);
+//                spike_index = i/8;
+				spike_shift = 7-i;
                 if(spikes)
                 {
-                    out_buffer[j*spike_seg_size+spike_index]|=(spikes<<spike_shift);
                     spike_count++;
+//                    if(is_recording)out_buffer[j*spike_seg_size+spike_index]|=(spikes<<spike_shift);
+                    if(is_recording)out_buffer[j]|=(spikes<<spike_shift);
                 }
                 #endif
                 #ifndef BITFIELD
@@ -788,8 +834,9 @@ void transfer_handler(uint tid, uint ttag)
     {
         index_y=process_chan(dtcm_buffer_y,dtcm_buffer_a);
     }
+
     //triggers a write to recording region callback
-//    spin1_trigger_user_event(NULL,NULL);
+    if(is_recording)spin1_trigger_user_event(NULL,NULL);
 }
 
 void c_main()

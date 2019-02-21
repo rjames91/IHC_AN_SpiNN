@@ -112,7 +112,7 @@ void key_search_and_send(uint32_t spike,uint null){
 
 void spike_rx(uint32_t mc_key, uint null){
 //    io_printf(IO_BUF,"k:%d\n",mc_key);
-    spin1_schedule_callback(key_search_and_send,mc_key,NULL,1);
+    if (is_key)spin1_schedule_callback(key_search_and_send,mc_key,NULL,1);
 //    if (is_key){
 //        key_search_and_send(mc_key,NULL);
 //        }

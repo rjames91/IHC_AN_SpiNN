@@ -32,7 +32,6 @@ uint coreID;
 uint chipID;
 uint test_DMA;
 uint seg_index;
-uint cbuff_index;
 uint cbuff_numseg;
 uint shift_index;
 uint spike_count=0;
@@ -224,9 +223,8 @@ static bool initialise_recording(){
 bool app_init(void)
 {
 	seg_index=0;
-	cbuff_index=0;
 	shift_index=0;
-	cbuff_numseg=3;
+	cbuff_numseg=4;
 	read_switch=0;
 	write_switch=0;
 	r_max_recip=REAL_CONST(1.)/(REAL)RDM_MAX;
@@ -251,17 +249,6 @@ bool app_init(void)
     if(is_recording){
         if (!initialise_recording()) return false;
     }
-//        //get recording region
-//        address_t recording_address = data_specification_get_region(
-//                                            RECORDING,data_address);
-//        // Setup recording
-//        uint32_t recording_flags = 0;
-//        if (!recording_initialize(recording_address, &recording_flags))
-//        {
-//            rt_error(RTE_SWERR);
-//            return false;
-//        }
-//    }
     // Get the size of the data in words
     data_size = params[DATA_SIZE];
     //get the core ID if the parent DRNL
@@ -583,8 +570,9 @@ void data_read(uint mc_key, uint payload)
                 dtcm_buffer_in=dtcm_buffer_b;
                 read_switch=0;
             }
-            spin1_dma_transfer(DMA_READ,&sdramin_buffer[cbuff_index*SEGSIZE],
+            spin1_dma_transfer(DMA_READ,&sdramin_buffer[(seg_index & (cbuff_numseg-1))*SEGSIZE],
                             dtcm_buffer_in, DMA_READ,SEGSIZE*sizeof(double));
+
         }
 	}
 }
@@ -807,16 +795,6 @@ void transfer_handler(uint tid, uint ttag)
 {
     //increment segment index
     seg_index++;
-    //check circular buffer
-    if(cbuff_index<cbuff_numseg-1)
-    {    //increment circular buffer index
-        cbuff_index++;
-    }
-    else
-    {
-        cbuff_index=0;
-    }
-
     //choose current available buffers
     if(!read_switch && !write_switch)
     {

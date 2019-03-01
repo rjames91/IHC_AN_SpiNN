@@ -26,6 +26,7 @@ enum params {
     AN_KEY,
     IS_KEY,
     IS_FINAL,
+    N_ATOMS,
     IHC_KEYS
 };
 
@@ -33,6 +34,7 @@ uint32_t an_key;
 uint32_t is_key;
 uint32_t n_ihcs;
 uint32_t is_final;
+uint32_t n_atoms;
 bool final_r2s;
 static key_mask_table_entry *key_mask_table;
 uint32_t coreID,chipID;
@@ -69,9 +71,11 @@ bool app_init(void)
     an_key = params[AN_KEY];
     is_key = params[IS_KEY];
     is_final = params[IS_FINAL];
+    n_atoms = params[N_ATOMS];
     io_printf(IO_BUF,"an_key=%d\n",an_key);
     io_printf(IO_BUF,"is_key=%d\n",is_key);
     io_printf(IO_BUF,"is_final=%d\n",is_final);
+    io_printf(IO_BUF,"n_atoms=%d\n",n_atoms);
     final_r2s = 0;
 }
 
@@ -88,6 +92,10 @@ void key_search_and_send(uint32_t spike,uint null){
         entry = key_mask_table[imid];
         if ((spike & entry.mask) == entry.key){
             uint32_t neuron_id = entry.offset+ (spike & ~entry.mask);
+            if(neuron_id>=n_atoms){
+                log_info("incorrect neuron ID generated %d",neuron_id);
+                rt_error(RTE_SWERR);
+            }
 //            io_printf(IO_BUF,"id: %d txk: 0x%x\n",neuron_id,an_key|neuron_id);
             while(!spin1_send_mc_packet(an_key|neuron_id,0,NO_PAYLOAD)){
                 spin1_delay_us(1);

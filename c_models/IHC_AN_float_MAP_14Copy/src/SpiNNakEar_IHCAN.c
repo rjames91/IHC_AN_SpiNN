@@ -338,6 +338,18 @@ bool app_init(void)
 				   (uint) dtcm_buffer_a);
 	}
 
+    while (sdramin_buffer==NULL)//if first time in this callback setup input buffer
+    {
+//            io_printf(IO_BUF,"[core %d] ready to send from DRNL received,"
+//                        "setting up input buffer\n",coreID);
+        //obtain pointer to shared SDRAM circular buffer with parent DRNL
+        spin1_delay_us(1000);
+        sdramin_buffer = (double *) sark_tag_ptr (drnl_coreID, 0);
+        //TODO: implement a time out here
+    }
+    io_printf(IO_BUF,"[core %d] sdram in buffer @ 0x%08x\n", coreID,
+                   (uint) sdramin_buffer);
+
 	//============MODEL INITIALISATION================//
 	//calculate startup values
 	startupValues=generateStartupVars();
@@ -448,14 +460,14 @@ void app_done()
 
 void app_end(uint null_a,uint null_b)
 {
-    io_printf(IO_BUF,"sending final ack packet and ending application\n");
+//    io_printf(IO_BUF,"sending final packet to an group node and ending application\n");
     //send final ack to parent DRNL
-    while (!spin1_send_mc_packet(drnl_key|2, 0, WITH_PAYLOAD)) {
+    /*while (!spin1_send_mc_packet(drnl_key|2, 0, WITH_PAYLOAD)) {
         spin1_delay_us(1);
-    }
-    while (!spin1_send_mc_packet(an_key, 0, WITH_PAYLOAD)) {
-    spin1_delay_us(1);
-    }
+    }*/
+//    while (!spin1_send_mc_packet(an_key, 0, WITH_PAYLOAD)) {
+//    spin1_delay_us(1);
+//    }
     if(is_recording)recording_finalise();
 
     io_printf (IO_BUF, "spinn_exit %d data_read:%d\n",seg_index,
@@ -513,7 +525,7 @@ void data_read(uint mc_key, uint payload)
 {
     //obtain command hidden in mc_key
     uint command = mc_key & mask;
-    if (command==1 && seg_index==0)//ready to send packet received from DRNL
+ /*   if (command==1 && seg_index==0)//ready to send packet received from DRNL
     {
         if (sdramin_buffer==NULL)//if first time in this callback setup input buffer
         {
@@ -541,8 +553,26 @@ void data_read(uint mc_key, uint payload)
                 }
             }
         }
-    }
-    else if (command==1 && seg_index>0)
+        if (sdramin_buffer==NULL)//if initial input buffer setup fails
+        {
+            test_DMA = FALSE;
+            io_printf (IO_BUF, "[core %d] error - cannot allocate"
+                        "buffer, ending application\n", coreID);
+            spin1_schedule_callback(app_end,NULL,NULL,2);
+            return;
+        }
+        else
+        {
+            io_printf(IO_BUF,"sending ack packet from %d\n",drnl_key);
+            //now input buffer is allocated send acknowledgement back to parent DRNL
+            while (!spin1_send_mc_packet(drnl_key|2, 0, WITH_PAYLOAD))
+            {
+                spin1_delay_us(1);
+            }
+        }
+
+    }*/
+    if (command==1 && seg_index>0)
     {
         //DRNL has finished writing to SDRAM schedule end callback
         io_printf(IO_BUF,"drnl end\n");
@@ -574,6 +604,10 @@ void data_read(uint mc_key, uint payload)
                             dtcm_buffer_in, DMA_READ,SEGSIZE*sizeof(double));
 
         }
+	}
+	else{
+	    log_info("unexpected mc packet received");
+        rt_error(RTE_SWERR);
 	}
 }
 ////---------Main segment processing loop-----////

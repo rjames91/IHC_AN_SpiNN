@@ -139,8 +139,10 @@ void app_end()
 
 void mc_payload_rx_callback(uint null_a, uint null_b){
 //    app_end();
-    if(final_r2s)spin1_schedule_callback(app_end,NULL,NULL,2);
-    else final_r2s = 1;
+    log_info("command from OME received %d",final_r2s);
+    spin1_schedule_callback(app_end,NULL,NULL,2);
+//    if(final_r2s)spin1_schedule_callback(app_end,NULL,NULL,2);
+//    else final_r2s = 1;
 }
 
 void c_main()

@@ -81,6 +81,8 @@ REAL ANCleft[NUMFIBRES];
 REAL ANAvail[NUMFIBRES];
 REAL ANRepro[NUMFIBRES];
 
+uint32_t NUMLSR,NUMMSR,NUMHSR;
+
 startupVars generateStartupVars(void)
 {
 	startupVars out;
@@ -118,7 +120,7 @@ startupVars generateStartupVars(void)
 	gmaxcahsr=20e-9;
 	eca=0.066;
 	taucalsr=200e-6;
-	taucamsr=0;
+	taucamsr=350e-6;
 	taucahsr=500e-6;
 	mICaCurr_pow=mICaCurr;
 	for (int i=0;i<2;i++)
@@ -189,6 +191,9 @@ enum params {
     FS,
     AN_KEY,
     IS_RECORDING,
+    N_LSR,
+    N_MSR,
+    N_HSR,
     SEED
 };
 
@@ -263,6 +268,10 @@ bool app_init(void)
     resamp_fac = params[RESAMPLE];
     sampling_freq = params[FS];
     an_key = params[AN_KEY];
+    NUMLSR = params[N_LSR];
+    NUMMSR = params[N_MSR];
+    NUMHSR = params[N_HSR];
+
     //RNG seeds
     seeds = &params[SEED];
     log_info("IHCAN key=%d",drnl_key);
@@ -270,6 +279,9 @@ bool app_init(void)
     log_info("mask=%d",mask);
     log_info("DRNL ID=%d",drnl_coreID);
     log_info("AN key=%d",an_key);
+    log_info("n_lsr=%d",NUMLSR);
+    log_info("n_msr=%d",NUMMSR);
+    log_info("n_hsr=%d",NUMHSR);
 
     #ifdef PROFILE
     // configure timer 2 for profiling
@@ -406,7 +418,7 @@ bool app_init(void)
 		ANRepro[i+NUMLSR]=startupValues.ANReproMSR0;
 		refrac[i+NUMLSR]=0;
 		preSyn.GmaxCa[i+NUMLSR]=20e-9;
-		preSyn.recTauCa[i+NUMLSR]=0;
+		preSyn.recTauCa[i+NUMLSR]=1./350e-6;
 		Synapse.M[i+NUMLSR]=REAL_CONST(4.);
 	}
 	for(uint i=0;i<NUMHSR;i++)

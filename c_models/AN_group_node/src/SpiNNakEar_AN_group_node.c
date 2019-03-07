@@ -20,8 +20,16 @@
 #include <simulation.h>
 #include <debug.h>
 
+//data spec regions
+typedef enum regions {
+    SYSTEM,
+    PARAMS,
+    RECORDING,
+    PROFILER}regions;
+
 // The parameters to be read from memory
 enum params {
+    N_TICKS,
     N_IHCS,
     AN_KEY,
     IS_KEY,
@@ -39,8 +47,11 @@ bool final_r2s;
 static key_mask_table_entry *key_mask_table;
 uint32_t coreID,chipID;
 
+static uint32_t simulation_ticks = 0;
+uint32_t time;
+
 //application initialisation
-bool app_init(void)
+bool app_init(uint32_t *timer_period)
 {
 	io_printf (IO_BUF, "[core %d] -----------------------\n", coreID);
 	io_printf (IO_BUF, "[core %d] an group starting simulation\n", coreID);
@@ -48,9 +59,19 @@ bool app_init(void)
 	address_t data_address = data_specification_get_data_address();
     io_printf(IO_BUF,"data_address=%d\n",data_address);
 
+        // Get the timing details and set up the simulation interface
+    if (!simulation_initialise(
+            data_specification_get_region(SYSTEM, data_address),
+            APPLICATION_NAME_HASH, timer_period, NULL,
+            NULL, 1, 0)) {
+        return false;
+    }
+
     //get parameters
     address_t params = data_specification_get_region(
-                                        0,data_address);
+                                        PARAMS,data_address);
+
+    simulation_ticks = params[N_TICKS];
 
     n_ihcs = params[N_IHCS];
     io_printf(IO_BUF,"n_ihcs=%d\n",n_ihcs);
@@ -133,7 +154,8 @@ void app_end()
 //            spin1_delay_us(1);
 //        }
 //    }
-    spin1_exit(0);
+//    spin1_exit(0);
+    simulation_ready_to_read();
     io_printf (IO_BUF, "spinn_exit\n");
 }
 
@@ -145,17 +167,42 @@ void mc_payload_rx_callback(uint null_a, uint null_b){
 //    else final_r2s = 1;
 }
 
+void count_ticks(uint null_a, uint null_b){
+
+    time++;
+    if (time>simulation_ticks)spin1_schedule_callback(app_end,NULL,NULL,2);
+
+}
+
 void c_main()
 {
-  // Get core and chip IDs
-  coreID = spin1_get_core_id ();
-  chipID = spin1_get_chip_id ();
+    // Get core and chip IDs
+    coreID = spin1_get_core_id ();
+    chipID = spin1_get_chip_id ();
+    // Load DTCM data
+    uint32_t timer_period;
 
-  app_init();
+    // initialise the model
+    if (!app_init(&timer_period)){
+    rt_error(RTE_API);
+    }
 
-  //setup callbacks
-  spin1_callback_on (MC_PACKET_RECEIVED,spike_rx,-1);
-  spin1_callback_on (MCPL_PACKET_RECEIVED,mc_payload_rx_callback,-1);
+    // Start the time at "-1" so that the first tick will be 0
+    time = UINT32_MAX;
 
-  spin1_start (SYNC_WAIT);
+    // Set timer tick (in microseconds)
+    log_info("setting timer tick callback for %d microseconds",
+          timer_period);
+    log_info("total simulation ticks = %d",
+          simulation_ticks);
+    spin1_set_timer_tick(timer_period);
+
+    //setup callbacks
+    spin1_callback_on (MC_PACKET_RECEIVED,spike_rx,-1);
+    spin1_callback_on (MCPL_PACKET_RECEIVED,mc_payload_rx_callback,-1);
+    spin1_callback_on (TIMER_TICK,count_ticks,0);
+
+//    spin1_start (SYNC_WAIT);
+    simulation_run();
+
 }

@@ -210,7 +210,7 @@ uint an_key;
 uint32_t *seeds;
 uint32_t is_recording;
 uint32_t recording_flags;
-
+uint32_t TOTAL_TICKS;
 
 //! \brief Initialises the recording parts of the model
 //! \return True if recording initialisation is successful, false otherwise
@@ -257,6 +257,8 @@ bool app_init(void)
     }
     // Get the size of the data in words
     data_size = params[DATA_SIZE];
+    TOTAL_TICKS= (data_size/NUMFIBRES)/SEGSIZE;
+    log_info("TOTAL_TICKS=%d",TOTAL_TICKS);
     //get the core ID if the parent DRNL
     drnl_coreID = params[DRNLCOREID];
     placement_coreID = params[COREID];//not used
@@ -585,7 +587,7 @@ void data_read(uint mc_key, uint payload)
             }
         }
 
-    }*/
+    }
     if (command==1)// && seg_index>0)
     {
         //DRNL has finished writing to SDRAM schedule end callback
@@ -593,8 +595,10 @@ void data_read(uint mc_key, uint payload)
             io_printf(IO_BUF,"drnl end\n");
             spin1_schedule_callback(app_end,NULL,NULL,2);
         }
-    }
-    else if(command==0)//command is 0 therefore next segment in input buffer memory is ready
+    }*/
+
+    //else if(command==0)//command is 0 therefore next segment in input buffer memory is ready
+    if(command==0)//command is 0 therefore next segment in input buffer memory is ready
     {
         //measure time between each call of this function (should approximate the global clock in OME)
         #ifdef PROFILE
@@ -865,6 +869,9 @@ void transfer_handler(uint tid, uint ttag)
 
     //triggers a write to recording region callback
     if(is_recording)spin1_trigger_user_event(NULL,NULL);
+//    log_info("si %d",seg_index);
+    if (seg_index>=TOTAL_TICKS)spin1_schedule_callback(app_end,NULL,NULL,2);
+
 }
 
 void c_main()

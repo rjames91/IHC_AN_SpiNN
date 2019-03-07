@@ -586,7 +586,7 @@ void data_read(uint mc_key, uint payload)
         }
 
     }*/
-    if (command==1 && seg_index>0)
+    if (command==1)// && seg_index>0)
     {
         //DRNL has finished writing to SDRAM schedule end callback
         if(!app_complete){

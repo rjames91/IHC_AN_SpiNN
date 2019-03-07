@@ -39,6 +39,7 @@ uint data_read_count=0;
 
 uint read_switch;
 bool write_switch;
+bool app_complete=false;
 uint processing;
 uint index_x;
 uint index_y;
@@ -485,6 +486,7 @@ void app_end(uint null_a,uint null_b)
     io_printf (IO_BUF, "spinn_exit %d data_read:%d\n",seg_index,
                 data_read_count);
     app_done();
+    app_complete=true;
 //    simulation_exit();
     simulation_ready_to_read();
 }
@@ -587,8 +589,10 @@ void data_read(uint mc_key, uint payload)
     if (command==1 && seg_index>0)
     {
         //DRNL has finished writing to SDRAM schedule end callback
-        io_printf(IO_BUF,"drnl end\n");
-        spin1_schedule_callback(app_end,NULL,NULL,2);
+        if(!app_complete){
+            io_printf(IO_BUF,"drnl end\n");
+            spin1_schedule_callback(app_end,NULL,NULL,2);
+        }
     }
     else if(command==0)//command is 0 therefore next segment in input buffer memory is ready
     {

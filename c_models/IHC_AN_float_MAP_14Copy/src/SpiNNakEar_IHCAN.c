@@ -210,7 +210,9 @@ uint an_key;
 uint32_t *seeds;
 uint32_t is_recording;
 uint32_t recording_flags;
-uint32_t TOTAL_TICKS;
+//uint32_t TOTAL_TICKS;
+static uint32_t simulation_ticks=0;
+uint32_t time;
 
 //! \brief Initialises the recording parts of the model
 //! \return True if recording initialisation is successful, false otherwise
@@ -226,7 +228,7 @@ static bool initialise_recording(){
     return success;
 }
 //application initialisation
-bool app_init(void)
+bool app_init(uint32_t *timer_period)
 {
 	seg_index=0;
 	shift_index=0;
@@ -242,7 +244,7 @@ bool app_init(void)
 	// Get the timing details and set up the simulation interface
     if (!simulation_initialise(
             data_specification_get_region(SYSTEM, data_address),
-            APPLICATION_NAME_HASH, NULL, NULL,
+            APPLICATION_NAME_HASH, timer_period, &simulation_ticks,
             NULL, 1, 0)) {
         return false;
     }
@@ -257,8 +259,8 @@ bool app_init(void)
     }
     // Get the size of the data in words
     data_size = params[DATA_SIZE];
-    TOTAL_TICKS= (data_size/NUMFIBRES)/SEGSIZE;
-    log_info("TOTAL_TICKS=%d",TOTAL_TICKS);
+//    TOTAL_TICKS= (data_size/NUMFIBRES)/SEGSIZE;
+//    log_info("TOTAL_TICKS=%d",TOTAL_TICKS);
     //get the core ID if the parent DRNL
     drnl_coreID = params[DRNLCOREID];
     placement_coreID = params[COREID];//not used
@@ -483,8 +485,10 @@ void app_end(uint null_a,uint null_b)
 //    while (!spin1_send_mc_packet(an_key, 0, WITH_PAYLOAD)) {
 //    spin1_delay_us(1);
 //    }
-    if(is_recording)recording_finalise();
 
+    if(is_recording)recording_finalise();
+    log_info("total simulation ticks = %d",
+        simulation_ticks);
     io_printf (IO_BUF, "spinn_exit %d data_read:%d\n",seg_index,
                 data_read_count);
     app_done();
@@ -870,7 +874,13 @@ void transfer_handler(uint tid, uint ttag)
     //triggers a write to recording region callback
     if(is_recording)spin1_trigger_user_event(NULL,NULL);
 //    log_info("si %d",seg_index);
-    if (seg_index>=TOTAL_TICKS)spin1_schedule_callback(app_end,NULL,NULL,2);
+//    if (seg_index>=TOTAL_TICKS)spin1_schedule_callback(app_end,NULL,NULL,2);
+}
+
+void count_ticks(uint null_a, uint null_b){
+
+    time++;
+    if (time>simulation_ticks && !app_complete)spin1_schedule_callback(app_end,NULL,NULL,2);
 
 }
 
@@ -879,14 +889,24 @@ void c_main()
     // Get core and chip IDs
     coreID = spin1_get_core_id ();
     chipID = spin1_get_chip_id ();
-    if(app_init())
+    uint32_t timer_period;
+    // Start the time at "-1" so that the first tick will be 0
+    time = UINT32_MAX;
+
+    if(app_init(&timer_period))
     {
-      //setup callbacks
-      //process channel once data input has been read to DTCM
-      simulation_dma_transfer_done_callback_on(DMA_READ,transfer_handler);
-      //reads from DMA to DTCM every MC packet received
-      spin1_callback_on (MC_PACKET_RECEIVED,data_read,-1);
-      spin1_callback_on (USER_EVENT,data_write,0);
-      simulation_run();
+        // Set timer tick (in microseconds)
+        log_info("setting timer tick callback for %d microseconds",
+        timer_period);
+        spin1_set_timer_tick(timer_period);
+        //setup callbacks
+        //process channel once data input has been read to DTCM
+        simulation_dma_transfer_done_callback_on(DMA_READ,transfer_handler);
+        //reads from DMA to DTCM every MC packet received
+        spin1_callback_on (MC_PACKET_RECEIVED,data_read,-1);
+        spin1_callback_on (USER_EVENT,data_write,0);
+        spin1_callback_on (TIMER_TICK,count_ticks,0);
+
+        simulation_run();
     }
 }

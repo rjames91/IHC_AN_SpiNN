@@ -29,7 +29,6 @@ typedef enum regions {
 
 // The parameters to be read from memory
 enum params {
-    N_TICKS,
     N_IHCS,
     AN_KEY,
     IS_KEY,
@@ -50,6 +49,8 @@ uint32_t coreID,chipID;
 static uint32_t simulation_ticks = 0;
 uint32_t time;
 
+bool app_complete = false;
+
 //application initialisation
 bool app_init(uint32_t *timer_period)
 {
@@ -62,7 +63,7 @@ bool app_init(uint32_t *timer_period)
         // Get the timing details and set up the simulation interface
     if (!simulation_initialise(
             data_specification_get_region(SYSTEM, data_address),
-            APPLICATION_NAME_HASH, timer_period, NULL,
+            APPLICATION_NAME_HASH, timer_period, &simulation_ticks,
             NULL, 1, 0)) {
         return false;
     }
@@ -70,8 +71,6 @@ bool app_init(uint32_t *timer_period)
     //get parameters
     address_t params = data_specification_get_region(
                                         PARAMS,data_address);
-
-    simulation_ticks = params[N_TICKS];
 
     n_ihcs = params[N_IHCS];
     io_printf(IO_BUF,"n_ihcs=%d\n",n_ihcs);
@@ -155,6 +154,9 @@ void app_end()
 //        }
 //    }
 //    spin1_exit(0);
+    log_info("total simulation ticks = %d",
+          simulation_ticks);
+    app_complete = true;
     simulation_ready_to_read();
     io_printf (IO_BUF, "spinn_exit\n");
 }
@@ -170,7 +172,7 @@ void mc_payload_rx_callback(uint null_a, uint null_b){
 void count_ticks(uint null_a, uint null_b){
 
     time++;
-    if (time>simulation_ticks)spin1_schedule_callback(app_end,NULL,NULL,2);
+    if (time>simulation_ticks && !app_complete)spin1_schedule_callback(app_end,NULL,NULL,2);
 
 }
 
@@ -193,13 +195,11 @@ void c_main()
     // Set timer tick (in microseconds)
     log_info("setting timer tick callback for %d microseconds",
           timer_period);
-    log_info("total simulation ticks = %d",
-          simulation_ticks);
     spin1_set_timer_tick(timer_period);
 
     //setup callbacks
     spin1_callback_on (MC_PACKET_RECEIVED,spike_rx,-1);
-    spin1_callback_on (MCPL_PACKET_RECEIVED,mc_payload_rx_callback,-1);
+//    spin1_callback_on (MCPL_PACKET_RECEIVED,mc_payload_rx_callback,-1);
     spin1_callback_on (TIMER_TICK,count_ticks,0);
 
 //    spin1_start (SYNC_WAIT);

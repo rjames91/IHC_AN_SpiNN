@@ -630,7 +630,7 @@ void data_read(uint mc_key, uint payload)
         }
 	}
 	else{
-	    log_info("unexpected mc packet received");
+	    log_info("unexpected mc packet received 0x%x",mc_key);
         rt_error(RTE_SWERR);
 	}
 }

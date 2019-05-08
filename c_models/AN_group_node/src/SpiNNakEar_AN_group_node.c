@@ -41,6 +41,7 @@ uint32_t an_key;
 uint32_t is_key;
 uint32_t n_ihcs;
 uint32_t is_final;
+uint32_t spike_count = 0;
 uint32_t n_atoms;
 bool final_r2s;
 static key_mask_table_entry *key_mask_table;
@@ -101,6 +102,7 @@ bool app_init(uint32_t *timer_period)
 
 void key_search_and_send(uint32_t spike,uint null){
 //    io_printf(IO_BUF,"r\n");
+    if (is_final) spike_count++;
     //search through ihc_keys for the rx key
     uint32_t imin = 0;
     uint32_t imax = n_ihcs;
@@ -156,6 +158,7 @@ void app_end()
 //    spin1_exit(0);
     log_info("total simulation ticks = %d",
           simulation_ticks);
+    if(is_final)log_info("total spike count = %d",spike_count);
     app_complete = true;
     simulation_ready_to_read();
     io_printf (IO_BUF, "spinn_exit\n");

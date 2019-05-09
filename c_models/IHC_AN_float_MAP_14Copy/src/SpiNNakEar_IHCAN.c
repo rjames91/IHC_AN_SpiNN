@@ -61,8 +61,6 @@ uint refrac[NUMFIBRES];
 
 double *dtcm_buffer_a;
 double *dtcm_buffer_b;
-//REAL *dtcm_buffer_x;
-//REAL *dtcm_buffer_y;
 uint32_t *dtcm_buffer_x;
 uint32_t *dtcm_buffer_y;
 
@@ -171,7 +169,7 @@ startupVars generateStartupVars(void)
 	out.ANReproLSR0=ANReproLSR;
 	out.ANReproMSR0=ANReproMSR;
 	out.ANReproHSR0=ANReproHSR;
-	
+
 	return out;
 }
 //data spec regions
@@ -259,13 +257,11 @@ bool app_init(uint32_t *timer_period)
     }
     // Get the size of the data in words
     data_size = params[DATA_SIZE];
-//    TOTAL_TICKS= (data_size/NUMFIBRES)/SEGSIZE;
-//    log_info("TOTAL_TICKS=%d",TOTAL_TICKS);
-    //get the core ID if the parent DRNL
+    //get the core ID of the parent DRNL
     drnl_coreID = params[DRNLCOREID];
     placement_coreID = params[COREID];//not used
     drnl_appID = params[DRNLAPPID];//not used
-    //MC key to send acknowledgements back to parent DRNL
+    //parent DRNL data key
     drnl_key = params[DRNL_KEY];
     //comms protocol mask to obtain commands from received key
     mask = 3;
@@ -279,7 +275,7 @@ bool app_init(uint32_t *timer_period)
 
     //RNG seeds
     seeds = &params[SEED];
-    log_info("IHCAN key=%d",drnl_key);
+    log_info("parent DRNL key=%d",drnl_key);
     log_info("data_size=%d",data_size);
     log_info("mask=%d",mask);
     log_info("DRNL ID=%d",drnl_coreID);
@@ -300,7 +296,6 @@ bool app_init(uint32_t *timer_period)
 	#ifdef BITFIELD
     seg_output /= 8;
     if (seg_output==0)seg_output=1;
-//    seg_output_n_bytes=seg_output * sizeof(uint8_t);
     seg_output_n_bytes=seg_output * sizeof(uint32_t);
 	#endif
 	#ifndef BITFIELD
@@ -319,8 +314,6 @@ bool app_init(uint32_t *timer_period)
 	dtcm_buffer_b = (double *) sark_alloc (SEGSIZE, sizeof(double));
     //output buffers
 	#ifdef BITFIELD
-//    dtcm_buffer_x = (uint8_t *) sark_alloc (seg_output, sizeof(uint8_t));
-//	dtcm_buffer_y = (uint8_t *) sark_alloc (seg_output, sizeof(uint8_t));
     dtcm_buffer_x = (uint32_t *) sark_alloc (seg_output, sizeof(uint32_t));
 	dtcm_buffer_y = (uint32_t *) sark_alloc (seg_output, sizeof(uint32_t));
 	#endif
@@ -357,8 +350,6 @@ bool app_init(uint32_t *timer_period)
 
     while (sdramin_buffer==NULL)//if first time in this callback setup input buffer
     {
-//            io_printf(IO_BUF,"[core %d] ready to send from DRNL received,"
-//                        "setting up input buffer\n",coreID);
         //obtain pointer to shared SDRAM circular buffer with parent DRNL
         spin1_delay_us(1000);
         sdramin_buffer = (double *) sark_tag_ptr (drnl_coreID, 0);
@@ -477,15 +468,6 @@ void app_done()
 
 void app_end(uint null_a,uint null_b)
 {
-//    io_printf(IO_BUF,"sending final packet to an group node and ending application\n");
-    //send final ack to parent DRNL
-    /*while (!spin1_send_mc_packet(drnl_key|2, 0, WITH_PAYLOAD)) {
-        spin1_delay_us(1);
-    }*/
-//    while (!spin1_send_mc_packet(an_key, 0, WITH_PAYLOAD)) {
-//    spin1_delay_us(1);
-//    }
-
     if(is_recording)recording_finalise();
     log_info("total simulation ticks = %d",
         simulation_ticks);
@@ -493,7 +475,6 @@ void app_end(uint null_a,uint null_b)
                 data_read_count);
     app_done();
     app_complete=true;
-//    simulation_exit();
     simulation_ready_to_read();
 }
 
@@ -532,8 +513,6 @@ void data_write(uint null_a, uint null_b)
 			dtcm_buffer_out=dtcm_buffer_y;
 		}
 		if(is_recording){
-//            recording_record_and_notify(0, dtcm_buffer_out,
-//                                    4,record_finished);
             recording_record_and_notify(0, dtcm_buffer_out,
                                     seg_output_n_bytes,record_finished);
         }
@@ -543,66 +522,7 @@ void data_write(uint null_a, uint null_b)
 //DMA read
 void data_read(uint mc_key, uint payload)
 {
-    //obtain command hidden in mc_key
-    uint command = mc_key & mask;
- /*   if (command==1 && seg_index==0)//ready to send packet received from DRNL
-    {
-        if (sdramin_buffer==NULL)//if first time in this callback setup input buffer
-        {
-            io_printf(IO_BUF,"[core %d] ready to send from DRNL received,"
-                        "setting up input buffer\n",coreID);
-            //obtain pointer to shared SDRAM circular buffer with parent DRNL
-            sdramin_buffer = (double *) sark_tag_ptr (drnl_coreID, 0);
-            io_printf(IO_BUF,"[core %d] sdram in buffer @ 0x%08x\n", coreID,
-                           (uint) sdramin_buffer);
-            if (sdramin_buffer==NULL)//if initial input buffer setup fails
-            {
-                test_DMA = FALSE;
-                io_printf (IO_BUF, "[core %d] error - cannot allocate"
-                            "buffer, ending application\n", coreID);
-                spin1_schedule_callback(app_end,NULL,NULL,2);
-                return;
-            }
-            else
-            {
-                io_printf(IO_BUF,"sending ack packet from %d\n",drnl_key);
-                //now input buffer is allocated send acknowledgement back to parent DRNL
-                while (!spin1_send_mc_packet(drnl_key|2, 0, WITH_PAYLOAD))
-                {
-                    spin1_delay_us(1);
-                }
-            }
-        }
-        if (sdramin_buffer==NULL)//if initial input buffer setup fails
-        {
-            test_DMA = FALSE;
-            io_printf (IO_BUF, "[core %d] error - cannot allocate"
-                        "buffer, ending application\n", coreID);
-            spin1_schedule_callback(app_end,NULL,NULL,2);
-            return;
-        }
-        else
-        {
-            io_printf(IO_BUF,"sending ack packet from %d\n",drnl_key);
-            //now input buffer is allocated send acknowledgement back to parent DRNL
-            while (!spin1_send_mc_packet(drnl_key|2, 0, WITH_PAYLOAD))
-            {
-                spin1_delay_us(1);
-            }
-        }
-
-    }
-    if (command==1)// && seg_index>0)
-    {
-        //DRNL has finished writing to SDRAM schedule end callback
-        if(!app_complete){
-            io_printf(IO_BUF,"drnl end\n");
-            spin1_schedule_callback(app_end,NULL,NULL,2);
-        }
-    }*/
-
-    //else if(command==0)//command is 0 therefore next segment in input buffer memory is ready
-    if(command==0)//command is 0 therefore next segment in input buffer memory is ready
+    if(mc_key==drnl_key)
     {
         //measure time between each call of this function (should approximate the global clock in OME)
         #ifdef PROFILE
@@ -631,13 +551,12 @@ void data_read(uint mc_key, uint payload)
 	}
 	else{
 	    log_info("unexpected mc packet received 0x%x",mc_key);
-        rt_error(RTE_SWERR);
+        //rt_error(RTE_SWERR);
 	}
 }
 ////---------Main segment processing loop-----////
 //select correct output buffer type
 #ifdef BITFIELD
-//uint process_chan(uint8_t *out_buffer,double *in_buffer)
 uint process_chan(uint32_t *out_buffer,double *in_buffer)
 #endif
 #ifndef BITFIELD
@@ -651,7 +570,7 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
 	uint segment_offset=NUMFIBRES*spike_seg_size*(seg_index-1);
 	#endif
 	uint i,j,k;
-	
+
 	REAL term_1;
 	REAL term_2;
 	REAL term_3;
@@ -673,7 +592,7 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
 	REAL Synapse_ypow;
 	REAL Synapse_xpow;
 	REAL compare;
-	REAL vrr;	
+	REAL vrr;
 	REAL releaseProb;
 	REAL M_q;
 	REAL Probability;
@@ -684,7 +603,7 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
 	REAL reuptakeandlost;
 	REAL reuptake;
 	double filter_1;
-	
+
 	uint si=0;
 	uint spike_index=0;
 	uint spike_shift=0;
@@ -740,10 +659,9 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
 			if(i%resamp_fac==0)
 			{
 				//=====Vesicle Release Rate MAP_BS=====//
-				//CaCurr_pow=pos_CaCurr;
 				CaCurr_pow=pos_CaCurr*preSyn.z;
 				for(k=0;k<(uint)preSyn.power-1;k++)
-				{			
+				{
 					CaCurr_pow=CaCurr_pow*pos_CaCurr*preSyn.z;
 				}
 				vrr = CaCurr_pow;
@@ -757,7 +675,7 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
 				//===========Ejected============//
 				releaseProb_pow=REAL_CONST(1.);
 				for(k=0;k<(uint)ANAvail[j];k++)
-				{			
+				{
 					releaseProb_pow=releaseProb_pow*
 					                (REAL_CONST(1.)-releaseProb);
 				}
@@ -772,7 +690,6 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
 					if (refrac[j]<=0)
 					{
 						spikes = 1;
-//						REAL spike_time = dt_segment * (REAL)seg_index + (REAL)i * dt;
                         spin1_send_mc_packet(an_key|j,0,NO_PAYLOAD);
 
 						refrac[j]=(uint)(Synapse.refrac_period +
@@ -789,20 +706,20 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
 					ejected=REAL_CONST(0.);
 					spikes=0;
 				}
-	
+
 				//=========Reprocessed=========//
 				Repro_rate=Synapse.xdt;
 				Synapse_xpow=REAL_CONST(1.);
 				Synapse_ypow=REAL_CONST(1.);
 				for(k=0;k<(uint)M_q;k++)
-				{			
+				{
 					Synapse_ypow=Synapse_ypow*(REAL_CONST(1.)-Synapse.ydt);
 				}
 				for(k=0;k<(uint)ANRepro[j];k++)
 				{
-					Synapse_xpow=Synapse_xpow*(REAL_CONST(1.)-Repro_rate);					
+					Synapse_xpow=Synapse_xpow*(REAL_CONST(1.)-Repro_rate);
 				}
-				Probability=REAL_CONST(1.)-Synapse_xpow;			
+				Probability=REAL_CONST(1.)-Synapse_xpow;
 				if(Probability>((REAL)random_gen()*r_max_recip))
 				{
 					reprocessed=REAL_CONST(1.);
@@ -811,8 +728,8 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
 				{
 					reprocessed=REAL_CONST(0.);
 				}
-				//========Replenish==========//	
-				Probability=REAL_CONST(1.)-Synapse_ypow;			
+				//========Replenish==========//
+				Probability=REAL_CONST(1.)-Synapse_ypow;
 				if(Probability>((REAL)random_gen()*r_max_recip))
 				{
 					replenish=REAL_CONST(1.);
@@ -829,14 +746,10 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
    		        ANRepro[j]=ANRepro[j]+ reuptake-reprocessed;
 				//=======write output value to SDRAM========//
 				#ifdef BITFIELD
-//                spike_index = (i-1)/32;
-//				spike_shift = 31-((i-1)%32);
-//                spike_index = i/8;
-				spike_shift = 7-i;
+				spike_shift = (SEGSIZE-1)-i;
                 if(spikes)
                 {
                     spike_count++;
-//                    if(is_recording)out_buffer[j*spike_seg_size+spike_index]|=(spikes<<spike_shift);
                     if(is_recording)out_buffer[j]|=(spikes<<spike_shift);
                 }
                 #endif
@@ -873,15 +786,12 @@ void transfer_handler(uint tid, uint ttag)
 
     //triggers a write to recording region callback
     if(is_recording)spin1_trigger_user_event(NULL,NULL);
-//    log_info("si %d",seg_index);
-//    if (seg_index>=TOTAL_TICKS)spin1_schedule_callback(app_end,NULL,NULL,2);
 }
 
 void count_ticks(uint null_a, uint null_b){
 
     time++;
     if (time>simulation_ticks && !app_complete)spin1_schedule_callback(app_end,NULL,NULL,2);
-
 }
 
 void c_main()

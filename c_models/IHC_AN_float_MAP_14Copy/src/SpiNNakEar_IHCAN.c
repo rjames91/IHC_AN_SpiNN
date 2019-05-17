@@ -251,10 +251,9 @@ bool app_init(uint32_t *timer_period)
                                         PARAMS,data_address);
 
     is_recording = params[IS_RECORDING];
-    log_info("is_recording=%d",is_recording);
-    if(is_recording){
-        if (!initialise_recording()) return false;
-    }
+    log_info("is_recording=%d",is_recording);//not used so always will record
+    if (!initialise_recording()) return false;
+
     // Get the size of the data in words
     data_size = params[DATA_SIZE];
     //get the core ID of the parent DRNL
@@ -468,7 +467,7 @@ void app_done()
 
 void app_end(uint null_a,uint null_b)
 {
-    if(is_recording)recording_finalise();
+    recording_finalise();
     log_info("total simulation ticks = %d",
         simulation_ticks);
     io_printf (IO_BUF, "spinn_exit %d data_read:%d\n",seg_index,
@@ -512,10 +511,10 @@ void data_write(uint null_a, uint null_b)
 			out_index=index_y;
 			dtcm_buffer_out=dtcm_buffer_y;
 		}
-		if(is_recording){
-            recording_record_and_notify(0, dtcm_buffer_out,
-                                    seg_output_n_bytes,record_finished);
-        }
+
+        recording_record_and_notify(0, dtcm_buffer_out,
+                            seg_output_n_bytes,record_finished);
+
 	}
 }
 
@@ -750,7 +749,7 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
                 if(spikes)
                 {
                     spike_count++;
-                    if(is_recording)out_buffer[j]|=(spikes<<spike_shift);
+                    out_buffer[j]|=(spikes<<spike_shift);
                 }
                 #endif
                 #ifndef BITFIELD
@@ -785,7 +784,7 @@ void transfer_handler(uint tid, uint ttag)
     }
 
     //triggers a write to recording region callback
-    if(is_recording)spin1_trigger_user_event(NULL,NULL);
+    spin1_trigger_user_event(NULL,NULL);
 }
 
 void count_ticks(uint null_a, uint null_b){

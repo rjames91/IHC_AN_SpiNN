@@ -32,7 +32,6 @@ uint coreID;
 uint chipID;
 uint test_DMA;
 uint seg_index;
-uint cbuff_index;
 uint cbuff_numseg;
 uint shift_index;
 uint spike_count=0;
@@ -40,11 +39,13 @@ uint data_read_count=0;
 
 uint read_switch;
 bool write_switch;
+bool app_complete=false;
 uint processing;
 uint index_x;
 uint index_y;
 REAL r_max_recip;
 REAL dt_spikes;
+REAL dt_segment;
 uint spike_seg_size;
 uint seg_output;
 uint seg_output_n_bytes;
@@ -60,8 +61,8 @@ uint refrac[NUMFIBRES];
 
 double *dtcm_buffer_a;
 double *dtcm_buffer_b;
-REAL *dtcm_buffer_x;
-REAL *dtcm_buffer_y;
+uint32_t *dtcm_buffer_x;
+uint32_t *dtcm_buffer_y;
 
 double *sdramin_buffer;
 
@@ -78,6 +79,8 @@ REAL CaCurr[NUMFIBRES];
 REAL ANCleft[NUMFIBRES];
 REAL ANAvail[NUMFIBRES];
 REAL ANRepro[NUMFIBRES];
+
+uint32_t NUMLSR,NUMMSR,NUMHSR;
 
 startupVars generateStartupVars(void)
 {
@@ -116,7 +119,7 @@ startupVars generateStartupVars(void)
 	gmaxcahsr=20e-9;
 	eca=0.066;
 	taucalsr=200e-6;
-	taucamsr=0;
+	taucamsr=350e-6;
 	taucahsr=500e-6;
 	mICaCurr_pow=mICaCurr;
 	for (int i=0;i<2;i++)
@@ -166,7 +169,7 @@ startupVars generateStartupVars(void)
 	out.ANReproLSR0=ANReproLSR;
 	out.ANReproMSR0=ANReproMSR;
 	out.ANReproHSR0=ANReproHSR;
-	
+
 	return out;
 }
 //data spec regions
@@ -185,6 +188,11 @@ enum params {
     DRNL_KEY,
     RESAMPLE,
     FS,
+    AN_KEY,
+    IS_RECORDING,
+    N_LSR,
+    N_MSR,
+    N_HSR,
     SEED
 };
 
@@ -196,15 +204,33 @@ uint drnl_key;
 uint mask;
 uint resamp_fac;
 uint sampling_freq;
+uint an_key;
 uint32_t *seeds;
+uint32_t is_recording;
+uint32_t recording_flags;
+//uint32_t TOTAL_TICKS;
+static uint32_t simulation_ticks=0;
+uint32_t time;
 
+//! \brief Initialises the recording parts of the model
+//! \return True if recording initialisation is successful, false otherwise
+static bool initialise_recording(){
+    address_t address = data_specification_get_data_address();
+    address_t recording_region = data_specification_get_region(
+            RECORDING, address);
+
+    log_info("Recording starts at 0x%08x", recording_region);
+
+    bool success = recording_initialize(recording_region, &recording_flags);
+    log_info("Recording flags = 0x%08x", recording_flags);
+    return success;
+}
 //application initialisation
-bool app_init(void)
+bool app_init(uint32_t *timer_period)
 {
 	seg_index=0;
-	cbuff_index=0;
 	shift_index=0;
-	cbuff_numseg=3;
+	cbuff_numseg=4;
 	read_switch=0;
 	write_switch=0;
 	r_max_recip=REAL_CONST(1.)/(REAL)RDM_MAX;
@@ -216,43 +242,46 @@ bool app_init(void)
 	// Get the timing details and set up the simulation interface
     if (!simulation_initialise(
             data_specification_get_region(SYSTEM, data_address),
-            APPLICATION_NAME_HASH, NULL, NULL,
+            APPLICATION_NAME_HASH, timer_period, &simulation_ticks,
             NULL, 1, 0)) {
         return false;
     }
     //get parameters
     address_t params = data_specification_get_region(
                                         PARAMS,data_address);
-    //get recording region
-    address_t recording_address = data_specification_get_region(
-                                        RECORDING,data_address);
-    // Setup recording
-    uint32_t recording_flags = 0;
-    if (!recording_initialize(recording_address, &recording_flags))
-    {
-        rt_error(RTE_SWERR);
-        return false;
-    }
+
+    is_recording = params[IS_RECORDING];
+    log_info("is_recording=%d",is_recording);//not used so always will record
+    if (!initialise_recording()) return false;
 
     // Get the size of the data in words
     data_size = params[DATA_SIZE];
-    //get the core ID if the parent DRNL
+    //get the core ID of the parent DRNL
     drnl_coreID = params[DRNLCOREID];
     placement_coreID = params[COREID];//not used
     drnl_appID = params[DRNLAPPID];//not used
-    //MC key to send acknowledgements back to parent DRNL
+    //parent DRNL data key
     drnl_key = params[DRNL_KEY];
     //comms protocol mask to obtain commands from received key
     mask = 3;
     //factor to perform vesicle model resampling by
     resamp_fac = params[RESAMPLE];
     sampling_freq = params[FS];
+    an_key = params[AN_KEY];
+    NUMLSR = params[N_LSR];
+    NUMMSR = params[N_MSR];
+    NUMHSR = params[N_HSR];
+
     //RNG seeds
     seeds = &params[SEED];
-    log_info("IHCAN key=%d",drnl_key);
+    log_info("parent DRNL key=%d",drnl_key);
     log_info("data_size=%d",data_size);
     log_info("mask=%d",mask);
     log_info("DRNL ID=%d",drnl_coreID);
+    log_info("AN key=%d",an_key);
+    log_info("n_lsr=%d",NUMLSR);
+    log_info("n_msr=%d",NUMMSR);
+    log_info("n_hsr=%d",NUMHSR);
 
     #ifdef PROFILE
     // configure timer 2 for profiling
@@ -262,18 +291,21 @@ bool app_init(void)
 
     Fs=(REAL)sampling_freq;
 	dt=(1.0/Fs);
-	#ifndef BITFIELD
-	spike_seg_size = SEGSIZE;
-	#endif
+	seg_output = NUMFIBRES * SEGSIZE;
 	#ifdef BITFIELD
-    spike_seg_size = SEGSIZE/32;
+    seg_output /= 8;
+    if (seg_output==0)seg_output=1;
+    seg_output_n_bytes=seg_output * sizeof(uint32_t);
 	#endif
-	seg_output = NUMFIBRES * spike_seg_size;
+	#ifndef BITFIELD
 	seg_output_n_bytes=seg_output * sizeof(REAL);
+	#endif
     log_info("seg output (in bytes)=%d\n",seg_output_n_bytes);
+    spike_seg_size = seg_output/NUMFIBRES;
 
 	max_rate=Fs/(REAL)resamp_fac;
 	dt_spikes=(REAL)resamp_fac*dt;
+	dt_segment = dt*SEGSIZE;
 
 	//Alocate buffers in DTCM
 	//input buffers
@@ -281,8 +313,8 @@ bool app_init(void)
 	dtcm_buffer_b = (double *) sark_alloc (SEGSIZE, sizeof(double));
     //output buffers
 	#ifdef BITFIELD
-    dtcm_buffer_x = (uint *) sark_alloc (seg_output, sizeof(uint));
-	dtcm_buffer_y = (uint *) sark_alloc (seg_output, sizeof(uint));
+    dtcm_buffer_x = (uint32_t *) sark_alloc (seg_output, sizeof(uint32_t));
+	dtcm_buffer_y = (uint32_t *) sark_alloc (seg_output, sizeof(uint32_t));
 	#endif
 	#ifndef BITFIELD
 	dtcm_buffer_x = (REAL *) sark_alloc (seg_output, sizeof(REAL));
@@ -314,6 +346,16 @@ bool app_init(void)
 		io_printf (IO_BUF, "[core %d] dtcm buffer a @ 0x%08x\n", coreID,
 				   (uint) dtcm_buffer_a);
 	}
+
+    while (sdramin_buffer==NULL)//if first time in this callback setup input buffer
+    {
+        //obtain pointer to shared SDRAM circular buffer with parent DRNL
+        spin1_delay_us(1000);
+        sdramin_buffer = (double *) sark_tag_ptr (drnl_coreID, 0);
+        //TODO: implement a time out here
+    }
+    io_printf(IO_BUF,"[core %d] sdram in buffer @ 0x%08x\n", coreID,
+                   (uint) sdramin_buffer);
 
 	//============MODEL INITIALISATION================//
 	//calculate startup values
@@ -371,7 +413,7 @@ bool app_init(void)
 		ANRepro[i+NUMLSR]=startupValues.ANReproMSR0;
 		refrac[i+NUMLSR]=0;
 		preSyn.GmaxCa[i+NUMLSR]=20e-9;
-		preSyn.recTauCa[i+NUMLSR]=0;
+		preSyn.recTauCa[i+NUMLSR]=1./350e-6;
 		Synapse.M[i+NUMLSR]=REAL_CONST(4.);
 	}
 	for(uint i=0;i<NUMHSR;i++)
@@ -412,8 +454,8 @@ bool app_init(void)
 void app_done()
 {
     // report simulation time
-    io_printf (IO_BUF, "[core %d] simulation lasted %d ticks producing %d spikes\n",
-                coreID,spin1_get_simulation_time(),spike_count);
+    io_printf (IO_BUF, "[core %d] simulation produced %d spikes\n",
+                coreID,spike_count);
     //copy profile data
     #ifdef PROFILE
         profiler_finalise();
@@ -425,18 +467,13 @@ void app_done()
 
 void app_end(uint null_a,uint null_b)
 {
-
-    log_info("sending final ack packet and ending application\n");
-    //send final ack to parent DRNL
-    while (!spin1_send_mc_packet(drnl_key|2, 0, WITH_PAYLOAD)) {
-        spin1_delay_us(1);
-    }
     recording_finalise();
+    log_info("total simulation ticks = %d",
+        simulation_ticks);
     io_printf (IO_BUF, "spinn_exit %d data_read:%d\n",seg_index,
                 data_read_count);
-//
     app_done();
-//    simulation_exit();
+    app_complete=true;
     simulation_ready_to_read();
 }
 
@@ -453,7 +490,13 @@ recording_complete_callback_t record_finished(void)
 
 void data_write(uint null_a, uint null_b)
 {
+    #ifdef BITFIELD
+//	uint8_t *dtcm_buffer_out;
+	uint32_t *dtcm_buffer_out;
+	#endif
+	#ifndef BITFIELD
 	REAL *dtcm_buffer_out;
+	#endif
 	uint out_index;
 	if(test_DMA == TRUE)
 	{
@@ -468,51 +511,17 @@ void data_write(uint null_a, uint null_b)
 			out_index=index_y;
 			dtcm_buffer_out=dtcm_buffer_y;
 		}
+
         recording_record_and_notify(0, dtcm_buffer_out,
-                                    seg_output_n_bytes,record_finished);
+                            seg_output_n_bytes,record_finished);
+
 	}
 }
 
 //DMA read
 void data_read(uint mc_key, uint payload)
 {
-    //obtain command hidden in mc_key
-    uint command = mc_key & mask;
-    if (command==1 && seg_index==0)//ready to send packet received from DRNL
-    {
-        if (sdramin_buffer==NULL)//if first time in this callback setup input buffer
-        {
-            log_info("[core %d] ready to send from DRNL received,"
-                        "setting up input buffer",coreID);
-            //obtain pointer to shared SDRAM circular buffer with parent DRNL
-            sdramin_buffer = (double *) sark_tag_ptr (drnl_coreID, 0);
-            log_info("[core %d] sdram in buffer @ 0x%08x\n", coreID,
-                           (uint) sdramin_buffer);
-            if (sdramin_buffer==NULL)//if initial input buffer setup fails
-            {
-                test_DMA = FALSE;
-                io_printf (IO_BUF, "[core %d] error - cannot allocate"
-                            "buffer, ending application\n", coreID);
-                spin1_schedule_callback(app_end,NULL,NULL,2);
-                return;
-            }
-            else
-            {
-                log_info("sending ack packet");
-                //now input buffer is allocated send acknowledgement back to parent DRNL
-                while (!spin1_send_mc_packet(drnl_key|2, 0, WITH_PAYLOAD))
-                {
-                    spin1_delay_us(1);
-                }
-            }
-        }
-    }
-    else if (command==1 && seg_index>0)
-    {
-        //DRNL has finished writing to SDRAM schedule end callback
-        spin1_schedule_callback(app_end,NULL,NULL,2);
-    }
-    else if(command==0)//command is 0 therefore next segment in input buffer memory is ready
+    if(mc_key==drnl_key)
     {
         //measure time between each call of this function (should approximate the global clock in OME)
         #ifdef PROFILE
@@ -534,15 +543,20 @@ void data_read(uint mc_key, uint payload)
                 dtcm_buffer_in=dtcm_buffer_b;
                 read_switch=0;
             }
-            spin1_dma_transfer(DMA_READ,&sdramin_buffer[cbuff_index*SEGSIZE],
+            spin1_dma_transfer(DMA_READ,&sdramin_buffer[(seg_index & (cbuff_numseg-1))*SEGSIZE],
                             dtcm_buffer_in, DMA_READ,SEGSIZE*sizeof(double));
+
         }
+	}
+	else{
+	    log_info("unexpected mc packet received 0x%x",mc_key);
+        //rt_error(RTE_SWERR);
 	}
 }
 ////---------Main segment processing loop-----////
 //select correct output buffer type
 #ifdef BITFIELD
-uint process_chan(uint *out_buffer,double *in_buffer)
+uint process_chan(uint32_t *out_buffer,double *in_buffer)
 #endif
 #ifndef BITFIELD
 uint process_chan(REAL *out_buffer,double *in_buffer)
@@ -555,7 +569,7 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
 	uint segment_offset=NUMFIBRES*spike_seg_size*(seg_index-1);
 	#endif
 	uint i,j,k;
-	
+
 	REAL term_1;
 	REAL term_2;
 	REAL term_3;
@@ -577,7 +591,7 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
 	REAL Synapse_ypow;
 	REAL Synapse_xpow;
 	REAL compare;
-	REAL vrr;	
+	REAL vrr;
 	REAL releaseProb;
 	REAL M_q;
 	REAL Probability;
@@ -588,7 +602,7 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
 	REAL reuptakeandlost;
 	REAL reuptake;
 	double filter_1;
-	
+
 	uint si=0;
 	uint spike_index=0;
 	uint spike_shift=0;
@@ -644,10 +658,9 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
 			if(i%resamp_fac==0)
 			{
 				//=====Vesicle Release Rate MAP_BS=====//
-				//CaCurr_pow=pos_CaCurr;
 				CaCurr_pow=pos_CaCurr*preSyn.z;
 				for(k=0;k<(uint)preSyn.power-1;k++)
-				{			
+				{
 					CaCurr_pow=CaCurr_pow*pos_CaCurr*preSyn.z;
 				}
 				vrr = CaCurr_pow;
@@ -661,7 +674,7 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
 				//===========Ejected============//
 				releaseProb_pow=REAL_CONST(1.);
 				for(k=0;k<(uint)ANAvail[j];k++)
-				{			
+				{
 					releaseProb_pow=releaseProb_pow*
 					                (REAL_CONST(1.)-releaseProb);
 				}
@@ -676,6 +689,8 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
 					if (refrac[j]<=0)
 					{
 						spikes = 1;
+                        spin1_send_mc_packet(an_key|j,0,NO_PAYLOAD);
+
 						refrac[j]=(uint)(Synapse.refrac_period +
 						           (((REAL)random_gen()*r_max_recip)*
 						            Synapse.refrac_period)+REAL_CONST(0.5));
@@ -690,20 +705,20 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
 					ejected=REAL_CONST(0.);
 					spikes=0;
 				}
-	
+
 				//=========Reprocessed=========//
 				Repro_rate=Synapse.xdt;
 				Synapse_xpow=REAL_CONST(1.);
 				Synapse_ypow=REAL_CONST(1.);
 				for(k=0;k<(uint)M_q;k++)
-				{			
+				{
 					Synapse_ypow=Synapse_ypow*(REAL_CONST(1.)-Synapse.ydt);
 				}
 				for(k=0;k<(uint)ANRepro[j];k++)
 				{
-					Synapse_xpow=Synapse_xpow*(REAL_CONST(1.)-Repro_rate);					
+					Synapse_xpow=Synapse_xpow*(REAL_CONST(1.)-Repro_rate);
 				}
-				Probability=REAL_CONST(1.)-Synapse_xpow;			
+				Probability=REAL_CONST(1.)-Synapse_xpow;
 				if(Probability>((REAL)random_gen()*r_max_recip))
 				{
 					reprocessed=REAL_CONST(1.);
@@ -712,8 +727,8 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
 				{
 					reprocessed=REAL_CONST(0.);
 				}
-				//========Replenish==========//	
-				Probability=REAL_CONST(1.)-Synapse_ypow;			
+				//========Replenish==========//
+				Probability=REAL_CONST(1.)-Synapse_ypow;
 				if(Probability>((REAL)random_gen()*r_max_recip))
 				{
 					replenish=REAL_CONST(1.);
@@ -730,12 +745,11 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
    		        ANRepro[j]=ANRepro[j]+ reuptake-reprocessed;
 				//=======write output value to SDRAM========//
 				#ifdef BITFIELD
-                spike_index = (i-1)/32;
-				spike_shift = 31-((i-1)%32);
+				spike_shift = (SEGSIZE-1)-i;
                 if(spikes)
                 {
-                    out_buffer[j*spike_seg_size+spike_index]|=(spikes<<spike_shift);
                     spike_count++;
+                    out_buffer[j]|=(spikes<<spike_shift);
                 }
                 #endif
                 #ifndef BITFIELD
@@ -751,16 +765,6 @@ void transfer_handler(uint tid, uint ttag)
 {
     //increment segment index
     seg_index++;
-    //check circular buffer
-    if(cbuff_index<cbuff_numseg-1)
-    {    //increment circular buffer index
-        cbuff_index++;
-    }
-    else
-    {
-        cbuff_index=0;
-    }
-
     //choose current available buffers
     if(!read_switch && !write_switch)
     {
@@ -778,8 +782,15 @@ void transfer_handler(uint tid, uint ttag)
     {
         index_y=process_chan(dtcm_buffer_y,dtcm_buffer_a);
     }
+
     //triggers a write to recording region callback
     spin1_trigger_user_event(NULL,NULL);
+}
+
+void count_ticks(uint null_a, uint null_b){
+
+    time++;
+    if (time>simulation_ticks && !app_complete)spin1_schedule_callback(app_end,NULL,NULL,2);
 }
 
 void c_main()
@@ -787,14 +798,24 @@ void c_main()
     // Get core and chip IDs
     coreID = spin1_get_core_id ();
     chipID = spin1_get_chip_id ();
-    if(app_init())
+    uint32_t timer_period;
+    // Start the time at "-1" so that the first tick will be 0
+    time = UINT32_MAX;
+
+    if(app_init(&timer_period))
     {
-      //setup callbacks
-      //process channel once data input has been read to DTCM
-      simulation_dma_transfer_done_callback_on(DMA_READ,transfer_handler);
-      //reads from DMA to DTCM every MC packet received
-      spin1_callback_on (MC_PACKET_RECEIVED,data_read,-1);
-      spin1_callback_on (USER_EVENT,data_write,0);
-      simulation_run();
+        // Set timer tick (in microseconds)
+        log_info("setting timer tick callback for %d microseconds",
+        timer_period);
+        spin1_set_timer_tick(timer_period);
+        //setup callbacks
+        //process channel once data input has been read to DTCM
+        simulation_dma_transfer_done_callback_on(DMA_READ,transfer_handler);
+        //reads from DMA to DTCM every MC packet received
+        spin1_callback_on (MC_PACKET_RECEIVED,data_read,-1);
+        spin1_callback_on (USER_EVENT,data_write,0);
+        spin1_callback_on (TIMER_TICK,count_ticks,0);
+
+        simulation_run();
     }
 }

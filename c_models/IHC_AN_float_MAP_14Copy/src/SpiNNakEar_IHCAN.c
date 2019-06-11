@@ -36,6 +36,7 @@ uint cbuff_numseg;
 uint shift_index;
 uint spike_count=0;
 uint data_read_count=0;
+uint data_write_count=0;
 
 uint read_switch;
 bool write_switch;
@@ -470,8 +471,8 @@ void app_end(uint null_a,uint null_b)
     recording_finalise();
     log_info("total simulation ticks = %d",
         simulation_ticks);
-    io_printf (IO_BUF, "spinn_exit %d data_read:%d\n",seg_index,
-                data_read_count);
+    io_printf (IO_BUF, "spinn_exit %d data_read:%d data_write:%d\n",seg_index,
+                data_read_count,data_write_count);
     app_done();
     app_complete=true;
     simulation_ready_to_read();
@@ -483,7 +484,7 @@ recording_complete_callback_t record_finished(void)
       profiler_write_entry_disable_irq_fiq(PROFILER_EXIT |
                                             PROFILER_TIMER);
     #endif
-    data_read_count++;
+    data_write_count++;
     //flip write buffers
     write_switch=!write_switch;
 }
@@ -545,6 +546,7 @@ void data_read(uint mc_key, uint payload)
             }
             spin1_dma_transfer(DMA_READ,&sdramin_buffer[(seg_index & (cbuff_numseg-1))*SEGSIZE],
                             dtcm_buffer_in, DMA_READ,SEGSIZE*sizeof(double));
+            data_read_count++;
 
         }
 	}
@@ -745,7 +747,7 @@ uint process_chan(REAL *out_buffer,double *in_buffer)
    		        ANRepro[j]=ANRepro[j]+ reuptake-reprocessed;
 				//=======write output value to SDRAM========//
 				#ifdef BITFIELD
-				spike_shift = (SEGSIZE-1)-i;
+				spike_shift = (SEGSIZE-1)-i;//only using SEGSIZE LSBs of 32bit word
                 if(spikes)
                 {
                     spike_count++;

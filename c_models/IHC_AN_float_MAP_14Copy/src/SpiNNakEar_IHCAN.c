@@ -37,6 +37,7 @@ uint shift_index;
 uint spike_count=0;
 uint data_read_count=0;
 uint data_write_count=0;
+uint mc_rx_count=0;
 
 uint read_switch;
 bool write_switch;
@@ -471,8 +472,8 @@ void app_end(uint null_a,uint null_b)
     recording_finalise();
     log_info("total simulation ticks = %d",
         simulation_ticks);
-    io_printf (IO_BUF, "spinn_exit %d data_read:%d data_write:%d\n",seg_index,
-                data_read_count,data_write_count);
+    io_printf (IO_BUF, "spinn_exit seg_index:%d data_read:%d data_write:%d mc_rx_count:%d\n",seg_index,
+                data_read_count,data_write_count,mc_rx_count);
     app_done();
     app_complete=true;
     simulation_ready_to_read();
@@ -522,6 +523,7 @@ void data_write(uint null_a, uint null_b)
 //DMA read
 void data_read(uint mc_key, uint payload)
 {
+    mc_rx_count++;
     if(mc_key==drnl_key)
     {
         //measure time between each call of this function (should approximate the global clock in OME)

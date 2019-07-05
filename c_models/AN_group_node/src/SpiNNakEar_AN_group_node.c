@@ -175,7 +175,8 @@ void mc_payload_rx_callback(uint null_a, uint null_b){
 void count_ticks(uint null_a, uint null_b){
 
     time++;
-    if (time>simulation_ticks && !app_complete)spin1_schedule_callback(app_end,NULL,NULL,2);
+    if (time == 0)io_printf(IO_BUF,"sync rx!\n");
+    else if (time>simulation_ticks && !app_complete)spin1_schedule_callback(app_end,NULL,NULL,2);
 
 }
 

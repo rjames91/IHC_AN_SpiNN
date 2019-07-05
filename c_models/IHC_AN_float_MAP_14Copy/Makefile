@@ -21,6 +21,8 @@ SOURCE_DIRS := $(SOURCE_DIR)
 SOURCES = SpiNNakEar_IHCAN.c
 #LIBRARIES += -lm
 CFLAGS +=-Iinclude/ -ffast-math
+PROFILER = PROFILER_ENABLED
+
 
 include $(SPINN_DIRS)/make/local.mk
 

@@ -23,7 +23,7 @@
 #include <simulation.h>
 #include <debug.h>
 
-//#define PROFILE
+#define PROFILE
 #define BITFIELD //define this if using spike (bitfield) output
 
 //=========GLOBAL VARIABLES============//
@@ -59,7 +59,6 @@ int start_count_read;
 int end_count_read;
 int start_count_write;
 int end_count_write;
-uint refrac[NUMFIBRES];
 
 double *dtcm_buffer_a;
 double *dtcm_buffer_b;
@@ -77,11 +76,19 @@ startupVars startupValues;
 double past_ciliaDisp;
 REAL IHCVnow;
 REAL mICaCurr;
-REAL CaCurr[NUMFIBRES];
-REAL ANCleft[NUMFIBRES];
-REAL ANAvail[NUMFIBRES];
-REAL ANRepro[NUMFIBRES];
+//REAL CaCurr[NUMFIBRES];
+//REAL ANCleft[NUMFIBRES];
+//REAL ANAvail[NUMFIBRES];
+//REAL ANRepro[NUMFIBRES];
+//uint refrac[NUMFIBRES];
+REAL *CaCurr;
+REAL *ANCleft;
+REAL *ANAvail;
+REAL *ANRepro;
+uint *refrac;
 
+
+uint32_t NUMFIBRES;
 uint32_t NUMLSR,NUMMSR,NUMHSR;
 
 startupVars generateStartupVars(void)
@@ -273,6 +280,7 @@ bool app_init(uint32_t *timer_period)
     NUMLSR = params[N_LSR];
     NUMMSR = params[N_MSR];
     NUMHSR = params[N_HSR];
+    NUMFIBRES = NUMLSR + NUMMSR + NUMHSR;
 
     //RNG seeds
     seeds = &params[SEED];
@@ -286,7 +294,6 @@ bool app_init(uint32_t *timer_period)
     log_info("n_hsr=%d",NUMHSR);
 
     #ifdef PROFILE
-    // configure timer 2 for profiling
     profiler_init(
     data_specification_get_region(PROFILER, data_address));
     #endif
@@ -310,6 +317,17 @@ bool app_init(uint32_t *timer_period)
 	dt_segment = dt*SEGSIZE;
 
 	//Alocate buffers in DTCM
+	//model buffers
+	CaCurr= (REAL *) sark_alloc (NUMFIBRES,sizeof(REAL));
+    ANCleft=(REAL *) sark_alloc (NUMFIBRES,sizeof(REAL));
+    ANAvail=(REAL *) sark_alloc (NUMFIBRES,sizeof(REAL));
+    ANRepro=(REAL *) sark_alloc (NUMFIBRES,sizeof(REAL));
+    refrac=(REAL *) sark_alloc (NUMFIBRES,sizeof(REAL));
+    preSyn.recTauCa = (REAL *) sark_alloc (NUMFIBRES,sizeof(REAL));
+    preSyn.GmaxCa = (REAL *) sark_alloc (NUMFIBRES,sizeof(REAL));
+    preSyn.CaTh = (REAL *) sark_alloc (NUMFIBRES,sizeof(REAL));
+    Synapse.M = (REAL *) sark_alloc (NUMFIBRES,sizeof(REAL));
+
 	//input buffers
 	dtcm_buffer_a = (double *) sark_alloc (SEGSIZE, sizeof(double));
 	dtcm_buffer_b = (double *) sark_alloc (SEGSIZE, sizeof(double));
@@ -483,7 +501,7 @@ recording_complete_callback_t record_finished(void)
 {
     #ifdef PROFILE
       profiler_write_entry_disable_irq_fiq(PROFILER_EXIT |
-                                            PROFILER_TIMER);
+                                            PROFILER_DMA_READ);
     #endif
     data_write_count++;
     //flip write buffers
@@ -524,12 +542,12 @@ void data_write(uint null_a, uint null_b)
 void data_read(uint mc_key, uint payload)
 {
     mc_rx_count++;
-    if(mc_key==drnl_key)
+    if(mc_key==drnl_key && sark.vcpu->cpu_state==CPU_STATE_RUN)
     {
         //measure time between each call of this function (should approximate the global clock in OME)
         #ifdef PROFILE
 	     profiler_write_entry_disable_irq_fiq(PROFILER_ENTER |
-	                                            PROFILER_TIMER);
+	                                            PROFILER_DMA_READ);
 		#endif
         double *dtcm_buffer_in;
         //read from DMA and copy into DTCM
@@ -794,7 +812,8 @@ void transfer_handler(uint tid, uint ttag)
 void count_ticks(uint null_a, uint null_b){
 
     time++;
-    if (time>simulation_ticks && !app_complete)spin1_schedule_callback(app_end,NULL,NULL,2);
+    if (time==0) io_printf(IO_BUF,"sync rx!\n");
+    else if (time>simulation_ticks && !app_complete)spin1_schedule_callback(app_end,NULL,NULL,2);
 }
 
 void c_main()

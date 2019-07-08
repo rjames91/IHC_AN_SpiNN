@@ -24,7 +24,7 @@
 //#define NUMLSR 1//10
 //#define NUMMSR 0
 //#define NUMHSR 1//10
-#define NUMFIBRES 2//20
+//#define NUMFIBRES 10//2//20
 
 #define SAMPLING_FREQUENCY 44100.f
 #define RESAMPLE_FACTOR 20//5
@@ -44,16 +44,28 @@ REAL Ga,C,u0,recips0,u1,recips1,Gmax,dtCap,Et,Gk,Ek,Rpc;
 double tc,filter_b1,filter_b2,filter_a1;
 } IHC_ciliaParams;
 
+//typedef struct {
+//REAL Eca,recipBeta,gamma,dtTauM,power,z;
+//REAL recTauCa[NUMFIBRES];
+//REAL GmaxCa[NUMFIBRES];
+//REAL CaTh[NUMFIBRES];
+//} IHC_preSynParams;
+//
+//typedef struct {
+//REAL numFibres,refrac_period,TW_delay,spike_Fs,ydt,xdt,ldt,rdt;
+//REAL M[NUMFIBRES];
+//} IHC_synParams;
+
 typedef struct {
 REAL Eca,recipBeta,gamma,dtTauM,power,z;
-REAL recTauCa[NUMFIBRES];
-REAL GmaxCa[NUMFIBRES];
-REAL CaTh[NUMFIBRES];
+REAL *recTauCa;
+REAL *GmaxCa;
+REAL *CaTh;
 } IHC_preSynParams;
 
 typedef struct {
 REAL numFibres,refrac_period,TW_delay,spike_Fs,ydt,xdt,ldt,rdt;
-REAL M[NUMFIBRES];
+REAL *M;
 } IHC_synParams;
 
 typedef struct{

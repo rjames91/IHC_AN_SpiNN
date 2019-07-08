@@ -23,7 +23,7 @@
 #include <simulation.h>
 #include <debug.h>
 
-#define PROFILE
+//#define PROFILE
 #define BITFIELD //define this if using spike (bitfield) output
 
 //=========GLOBAL VARIABLES============//

@@ -397,7 +397,8 @@ bool app_init(uint32_t *timer_period)
 	Cilia.filter_b1= 1.0;
 	Cilia.filter_b2= (double)dt/Cilia.tc - 1.0;
 	Cilia.filter_a1= (double)dt/Cilia.tc;
-	Cilia.C=REAL_CONST(0.3);
+//	Cilia.C=REAL_CONST(0.3);
+	Cilia.C=REAL_CONST(0.05);
 	Cilia.u0=REAL_CONST(0.3e-9);
 	Cilia.recips0=REAL_CONST(1.)/REAL_CONST(6e-9);
 	Cilia.u1=REAL_CONST(1e-9);
